@@ -64,9 +64,11 @@ export class AgentService {
         },
       });
 
-      // Create and initialize client
+      // Initialize config first (this initializes toolRegistry and internal client)
+      await config.initialize();
+
+      // Create client with initialized config
       const client = new GeminiClient(config);
-      await client.initialize();
 
       // Add to session manager
       this.sessionManager.addSession(sessionId, client, {
