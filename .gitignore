@@ -63,3 +63,5 @@ patch_output.log
 docs-site/.next
 # content is a symlink to ../docs
 docs-site/content
+
+.specstory/
