@@ -35,6 +35,8 @@ export interface CreateSessionRequest {
   userId?: string;
   model?: string;
   authType?: string;
+  apiKey?: string;
+  baseUrl?: string;
 }
 
 /**

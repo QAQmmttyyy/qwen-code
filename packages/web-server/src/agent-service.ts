@@ -55,6 +55,13 @@ export class AgentService {
         model: request.model || 'qwen-max',
         approvalMode: ApprovalMode.YOLO,
         debugMode: false,
+        generationConfig: {
+          apiKey:
+            request.apiKey ||
+            process.env['OPENROUTER_API_KEY'] ||
+            process.env['OPENAI_API_KEY'],
+          baseUrl: request.baseUrl || process.env['OPENROUTER_BASE_URL'],
+        },
       });
 
       // Create and initialize client
