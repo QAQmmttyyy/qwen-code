@@ -7,7 +7,6 @@
 import { randomUUID } from 'node:crypto';
 import type { GenerateContentResponse } from '@google/genai';
 import {
-  GeminiClient,
   Config,
   ApprovalMode,
   type ServerGeminiStreamEvent,
@@ -67,8 +66,8 @@ export class AgentService {
       // Initialize config first (this initializes toolRegistry and internal client)
       await config.initialize();
 
-      // Create client with initialized config
-      const client = new GeminiClient(config);
+      // Get the initialized client from config
+      const client = config.getGeminiClient();
 
       // Add to session manager
       this.sessionManager.addSession(sessionId, client, {
