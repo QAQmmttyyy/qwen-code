@@ -5,12 +5,12 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import type { GenerateContentResponse } from '@google/genai';
 import {
   Config,
   ApprovalMode,
   type ServerGeminiStreamEvent,
   GeminiEventType,
+  AuthType,
 } from '@qwen-code/qwen-code-core';
 import { SessionManager } from './session-manager.js';
 import type {
@@ -66,6 +66,9 @@ export class AgentService {
       // Initialize config first (this initializes toolRegistry and internal client)
       await config.initialize();
 
+      // Initialize content generator with appropriate auth type
+      await config.refreshAuth(AuthType.USE_OPENAI);
+
       // Get the initialized client from config
       const client = config.getGeminiClient();
 
@@ -91,60 +94,6 @@ export class AgentService {
       console.error(`❌ Failed to create session:`, error);
       throw new Error(
         `Failed to create session: ${error instanceof Error ? error.message : String(error)}`,
-      );
-    }
-  }
-
-  /**
-   * Send a message and get a response (non-streaming)
-   * Note: This collects the full streaming response and returns it
-   */
-  async sendMessage(
-    sessionId: string,
-    message: string,
-  ): Promise<GenerateContentResponse> {
-    const session = this.sessionManager.getSession(sessionId);
-    if (!session) {
-      throw new Error(`Session not found: ${sessionId}`);
-    }
-
-    try {
-      this.sessionManager.incrementMessageCount(sessionId);
-
-      // Use streaming API and collect the final response
-      const abortController = new AbortController();
-      const streamEvents = session.client.sendMessageStream(
-        message,
-        abortController.signal,
-        sessionId,
-      );
-
-      let textContent = '';
-
-      for await (const event of streamEvents) {
-        if (event.type === GeminiEventType.Content) {
-          textContent += event.value;
-        }
-      }
-
-      const mockResponse = {
-        candidates: [
-          {
-            content: {
-              role: 'model',
-              parts: [{ text: textContent }],
-            },
-            index: 0,
-          },
-        ],
-        text: textContent,
-      } as GenerateContentResponse;
-
-      return mockResponse;
-    } catch (error) {
-      console.error(`❌ Error sending message in session ${sessionId}:`, error);
-      throw new Error(
-        `Failed to send message: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
   }
