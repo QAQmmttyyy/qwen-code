@@ -43,8 +43,7 @@ npm run dev
 
 ### Messages
 
-- `POST /api/sessions/:id/messages` - Send a message (streaming)
-- `GET /api/sessions/:id/messages` - Get message history
+- `POST /api/sessions/:id/messages` - Send a message (streaming via SSE)
 
 ### Health
 
@@ -57,9 +56,23 @@ Set environment variables:
 ```bash
 PORT=3000
 SESSION_SECRET=your-secret-key
-QWEN_API_KEY=your-api-key
+OPENROUTER_API_KEY=your-api-key
 WORKSPACE_ROOT=/path/to/workspace
 ```
+
+## Streaming Events
+
+The message endpoint streams `ServerGeminiStreamEvent` objects via Server-Sent Events (SSE).
+These events use the same format as the CLI client, making it easy to build a consistent UI.
+
+Event types from `@qwen-code/qwen-code-core`:
+
+- `Content` - Text content chunks
+- `ToolCallRequest` - Tool execution requests
+- `ToolCallResponse` - Tool execution results
+- And more...
+
+See the CLI implementation for reference on handling these events.
 
 ## Architecture
 

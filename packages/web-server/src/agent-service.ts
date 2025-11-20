@@ -9,7 +9,6 @@ import {
   Config,
   ApprovalMode,
   type ServerGeminiStreamEvent,
-  GeminiEventType,
   AuthType,
 } from '@qwen-code/qwen-code-core';
 import { SessionManager } from './session-manager.js';
@@ -18,7 +17,6 @@ import type {
   CreateSessionResponse,
   SessionHistoryResponse,
   SessionInfoResponse,
-  MessageChunk,
 } from './types.js';
 
 /**
@@ -99,12 +97,12 @@ export class AgentService {
   }
 
   /**
-   * Send a message and stream the response
+   * Send a message and stream the response (returns raw ServerGeminiStreamEvent)
    */
   async *streamMessage(
     sessionId: string,
     message: string,
-  ): AsyncGenerator<MessageChunk> {
+  ): AsyncGenerator<ServerGeminiStreamEvent> {
     const session = this.sessionManager.getSession(sessionId);
     if (!session) {
       throw new Error(`Session not found: ${sessionId}`);
@@ -123,30 +121,16 @@ export class AgentService {
         sessionId,
       );
 
+      // Directly yield raw events without conversion
       for await (const event of streamEvents) {
-        // Convert ServerGeminiStreamEvent to MessageChunk
-        const chunk = this.convertStreamEventToChunk(event);
-        if (chunk) {
-          yield chunk;
-        }
+        yield event;
       }
-
-      // Send done signal
-      yield {
-        type: 'done',
-        timestamp: new Date().toISOString(),
-      };
     } catch (error) {
       console.error(
         `❌ Error streaming message in session ${sessionId}:`,
         error,
       );
-
-      yield {
-        type: 'error',
-        error: error instanceof Error ? error.message : String(error),
-        timestamp: new Date().toISOString(),
-      };
+      throw error;
     }
   }
 
@@ -222,49 +206,5 @@ export class AgentService {
   cleanup(): void {
     console.log('🧹 Cleaning up agent service...');
     this.sessionManager.cleanup();
-  }
-
-  /**
-   * Convert ServerGeminiStreamEvent to MessageChunk
-   */
-  private convertStreamEventToChunk(
-    event: ServerGeminiStreamEvent,
-  ): MessageChunk | null {
-    // Handle content events
-    if (event.type === GeminiEventType.Content) {
-      return {
-        type: 'chunk',
-        content: event.value,
-        timestamp: new Date().toISOString(),
-      };
-    }
-
-    // Handle tool call request events
-    if (event.type === GeminiEventType.ToolCallRequest) {
-      return {
-        type: 'tool_call',
-        toolCall: {
-          name: event.value.name,
-          args: event.value.args,
-        },
-        timestamp: new Date().toISOString(),
-      };
-    }
-
-    // Handle tool call response events
-    if (event.type === GeminiEventType.ToolCallResponse) {
-      const resultDisplay = event.value.resultDisplay;
-      const resultText = typeof resultDisplay === 'string' ? resultDisplay : '';
-      return {
-        type: 'tool_result',
-        toolResult: {
-          name: event.value.callId,
-          result: resultText,
-        },
-        timestamp: new Date().toISOString(),
-      };
-    }
-
-    return null;
   }
 }
