@@ -38,12 +38,12 @@ export function createMessageRoutes(agentService: AgentService): Router {
     res.setHeader('X-Accel-Buffering', 'no'); // Disable nginx buffering
 
     try {
-      // Stream the response
-      for await (const chunk of agentService.streamMessage(
+      // Stream raw ServerGeminiStreamEvent
+      for await (const event of agentService.streamMessage(
         sessionId,
         request.message,
       )) {
-        res.write(`data: ${JSON.stringify(chunk)}\n\n`);
+        res.write(`data: ${JSON.stringify(event)}\n\n`);
       }
 
       res.write('data: [DONE]\n\n');

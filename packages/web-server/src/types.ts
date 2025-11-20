@@ -56,22 +56,9 @@ export interface SendMessageRequest {
 }
 
 /**
- * Message chunk for streaming
+ * Note: Message streaming uses ServerGeminiStreamEvent from @qwen-code/qwen-code-core
+ * This preserves the same event format as the CLI for consistency
  */
-export interface MessageChunk {
-  type: 'chunk' | 'done' | 'error' | 'tool_call' | 'tool_result';
-  content?: string;
-  toolCall?: {
-    name: string;
-    args: Record<string, unknown>;
-  };
-  toolResult?: {
-    name: string;
-    result: string;
-  };
-  error?: string;
-  timestamp: string;
-}
 
 /**
  * Session history response
