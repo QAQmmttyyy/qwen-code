@@ -49,11 +49,10 @@ export interface CreateSessionResponse {
 }
 
 /**
- * Request to send a message
+ * Request to send a message (always streaming)
  */
 export interface SendMessageRequest {
   message: string;
-  stream?: boolean;
 }
 
 /**

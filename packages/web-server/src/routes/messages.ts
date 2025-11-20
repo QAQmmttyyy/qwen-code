@@ -18,7 +18,7 @@ export function createMessageRoutes(agentService: AgentService): Router {
 
   /**
    * POST /api/sessions/:id/messages
-   * Send a message (with streaming support via SSE)
+   * Send a message (streaming via SSE)
    */
   router.post('/:id/messages', async (req: Request, res: Response) => {
     const sessionId = req.params['id'];
@@ -31,51 +31,30 @@ export function createMessageRoutes(agentService: AgentService): Router {
       throw new HttpError(400, 'Message is required');
     }
 
-    const stream = request.stream !== false; // Default to streaming
+    // Set up Server-Sent Events
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no'); // Disable nginx buffering
 
-    if (stream) {
-      // Set up Server-Sent Events
-      res.setHeader('Content-Type', 'text/event-stream');
-      res.setHeader('Cache-Control', 'no-cache');
-      res.setHeader('Connection', 'keep-alive');
-      res.setHeader('X-Accel-Buffering', 'no'); // Disable nginx buffering
-
-      try {
-        // Stream the response
-        for await (const chunk of agentService.streamMessage(
-          sessionId,
-          request.message,
-        )) {
-          res.write(`data: ${JSON.stringify(chunk)}\n\n`);
-        }
-
-        res.write('data: [DONE]\n\n');
-        res.end();
-      } catch (error) {
-        const errorMessage =
-          error instanceof Error ? error.message : String(error);
-        res.write(
-          `data: ${JSON.stringify({ type: 'error', error: errorMessage })}\n\n`,
-        );
-        res.end();
+    try {
+      // Stream the response
+      for await (const chunk of agentService.streamMessage(
+        sessionId,
+        request.message,
+      )) {
+        res.write(`data: ${JSON.stringify(chunk)}\n\n`);
       }
-    } else {
-      // Non-streaming response
-      try {
-        const response = await agentService.sendMessage(
-          sessionId,
-          request.message,
-        );
-        res.json(response);
-      } catch (error) {
-        if (error instanceof Error && error.message.includes('not found')) {
-          throw new HttpError(404, error.message);
-        }
-        throw new HttpError(
-          500,
-          `Failed to send message: ${error instanceof Error ? error.message : String(error)}`,
-        );
-      }
+
+      res.write('data: [DONE]\n\n');
+      res.end();
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      res.write(
+        `data: ${JSON.stringify({ type: 'error', error: errorMessage })}\n\n`,
+      );
+      res.end();
     }
   });
 
