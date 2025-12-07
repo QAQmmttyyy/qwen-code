@@ -31,26 +31,42 @@ export function createMessageRoutes(agentService: AgentService): Router {
       throw new HttpError(400, 'Message is required');
     }
 
-    // Set up Server-Sent Events
+    console.log(`💬 Sending message to session: ${sessionId}`);
+    console.log(
+      `📝 Message: ${request.message.substring(0, 100)}${request.message.length > 100 ? '...' : ''}`,
+    );
+
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
-    res.setHeader('X-Accel-Buffering', 'no'); // Disable nginx buffering
+    res.setHeader('X-Accel-Buffering', 'no');
+
+    let eventCount = 0;
+    const startTime = Date.now();
 
     try {
-      // Stream raw ServerGeminiStreamEvent
       for await (const event of agentService.streamMessage(
         sessionId,
         request.message,
       )) {
+        eventCount++;
+        console.log(
+          `📡 Stream Event #${eventCount}:`,
+          JSON.stringify(event, null, 2),
+        );
         res.write(`data: ${JSON.stringify(event)}\n\n`);
       }
 
+      const duration = Date.now() - startTime;
+      console.log(
+        `✅ Message stream completed: ${sessionId}, ${eventCount} events, ${duration}ms`,
+      );
       res.write('data: [DONE]\n\n');
       res.end();
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : String(error);
+      console.error(`❌ Message stream error: ${sessionId}, ${errorMessage}`);
       res.write(
         `data: ${JSON.stringify({ type: 'error', error: errorMessage })}\n\n`,
       );
