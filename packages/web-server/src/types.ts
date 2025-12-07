@@ -5,7 +5,7 @@
  */
 
 import type { Content } from '@google/genai';
-import type { GeminiClient } from '@qwen-code/qwen-code-core';
+import type { GeminiClient, Config } from '@qwen-code/qwen-code-core';
 
 /**
  * Session metadata
@@ -24,6 +24,7 @@ export interface SessionMetadata {
  */
 export interface ActiveSession {
   client: GeminiClient;
+  config: Config;
   metadata: SessionMetadata;
 }
 
@@ -37,6 +38,7 @@ export interface CreateSessionRequest {
   authType?: string;
   apiKey?: string;
   baseUrl?: string;
+  approvalMode?: 'plan' | 'default' | 'auto-edit' | 'yolo';
 }
 
 /**
@@ -101,4 +103,21 @@ export interface ErrorResponse {
   error: string;
   message: string;
   statusCode: number;
+}
+
+/**
+ * Tool confirmation request
+ */
+export interface ToolConfirmationRequest {
+  outcome: 'proceed_once' | 'proceed_always' | 'cancel' | 'modify';
+  modifiedArgs?: Record<string, unknown>;
+}
+
+/**
+ * Tool confirmation response
+ */
+export interface ToolConfirmationResponse {
+  success: boolean;
+  newApprovalMode?: 'plan' | 'default' | 'auto-edit' | 'yolo';
+  error?: string;
 }
