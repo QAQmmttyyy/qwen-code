@@ -5,7 +5,7 @@
  */
 
 import type { ActiveSession, SessionMetadata } from './types.js';
-import type { GeminiClient } from '@qwen-code/qwen-code-core';
+import type { GeminiClient, Config } from '@qwen-code/qwen-code-core';
 
 /**
  * Manages active agent sessions with automatic cleanup
@@ -52,6 +52,7 @@ export class SessionManager {
   addSession(
     sessionId: string,
     client: GeminiClient,
+    config: Config,
     metadata: Omit<SessionMetadata, 'sessionId'>,
   ): void {
     // Check if we've reached the maximum number of sessions
@@ -65,6 +66,7 @@ export class SessionManager {
 
     this.sessions.set(sessionId, {
       client,
+      config,
       metadata: {
         sessionId,
         ...metadata,
