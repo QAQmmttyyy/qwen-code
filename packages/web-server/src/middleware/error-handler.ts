@@ -25,11 +25,17 @@ export class HttpError extends Error {
  */
 export function errorHandler(
   err: Error,
-  _req: Request,
+  req: Request,
   res: Response,
   _next: NextFunction,
 ): void {
-  console.error('❌ Error:', err);
+  console.error('❌ Error occurred:');
+  console.error(`   Method: ${req.method}`);
+  console.error(`   Path: ${req.path}`);
+  console.error(`   Error: ${err.name} - ${err.message}`);
+  if (err.stack) {
+    console.error(`   Stack:\n${err.stack}`);
+  }
 
   const statusCode = err instanceof HttpError ? err.statusCode : 500;
   const message = err.message || 'Internal server error';
