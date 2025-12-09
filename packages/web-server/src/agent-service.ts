@@ -11,7 +11,14 @@ import {
   type ServerGeminiStreamEvent,
   AuthType,
   ToolConfirmationOutcome,
+  CoreToolScheduler,
+  type CompletedToolCall,
+  type WaitingToolCall,
+  type ToolCallRequestInfo,
+  type ToolCallConfirmationDetails,
+  GeminiEventType,
 } from '@qwen-code/qwen-code-core';
+import type { Part } from '@google/genai';
 import { SessionManager } from './session-manager.js';
 import type {
   CreateSessionRequest,
@@ -28,8 +35,17 @@ import type {
 interface PendingToolConfirmation {
   callId: string;
   toolName: string;
+  confirmationDetails: ToolCallConfirmationDetails;
   resolve: (outcome: ToolConfirmationOutcome) => void;
   reject: (error: Error) => void;
+}
+
+/**
+ * Event queue for injecting events into SSE stream
+ */
+interface EventQueueItem {
+  event: ServerGeminiStreamEvent;
+  resolve: () => void;
 }
 
 /**
@@ -39,6 +55,18 @@ export class AgentService {
   private sessionManager: SessionManager;
   private pendingConfirmations: Map<string, PendingToolConfirmation> =
     new Map();
+  // CoreToolScheduler instances per session
+  private toolSchedulers: Map<string, CoreToolScheduler> = new Map();
+  // Event queues for injecting events into SSE streams
+  private eventQueues: Map<string, EventQueueItem[]> = new Map();
+  // Track tool execution completion per session
+  private toolsCompletePromises: Map<
+    string,
+    {
+      resolve: (completedTools: CompletedToolCall[]) => void;
+      reject: (error: Error) => void;
+    }
+  > = new Map();
 
   constructor(
     private readonly defaultWorkspaceRoot: string,
@@ -47,6 +75,156 @@ export class AgentService {
   ) {
     this.sessionManager = new SessionManager(maxSessions, sessionTimeout);
     this.sessionManager.startCleanupTimer();
+  }
+
+  /**
+   * Get or create CoreToolScheduler for a session
+   */
+  private getOrCreateScheduler(sessionId: string): CoreToolScheduler {
+    let scheduler = this.toolSchedulers.get(sessionId);
+    if (scheduler) {
+      return scheduler;
+    }
+
+    const session = this.sessionManager.getSession(sessionId);
+    if (!session) {
+      throw new Error(`Session not found: ${sessionId}`);
+    }
+
+    // Create scheduler with callbacks
+    scheduler = new CoreToolScheduler({
+      config: session.config,
+      outputUpdateHandler: undefined, // Web server doesn't stream live output for now
+      onAllToolCallsComplete: async (completedToolCalls) => {
+        console.log(
+          `✅ onAllToolCallsComplete called with ${completedToolCalls.length} tools`,
+        );
+        // Resolve the promise waiting for tools to complete
+        const promise = this.toolsCompletePromises.get(sessionId);
+        if (promise) {
+          console.log(
+            `✅ Resolving toolsCompletePromise for session ${sessionId}`,
+          );
+          promise.resolve(completedToolCalls);
+          this.toolsCompletePromises.delete(sessionId);
+        } else {
+          console.warn(
+            `⚠️  No toolsCompletePromise found for session ${sessionId}`,
+          );
+        }
+      },
+      onToolCallsUpdate: (toolCalls) => {
+        console.log(
+          `🔄 onToolCallsUpdate called with ${toolCalls.length} tools`,
+        );
+        console.log(
+          `   Tool statuses:`,
+          toolCalls.map((tc) => `${tc.request.name}:${tc.status}`).join(', '),
+        );
+
+        // Handle tool calls update - emit events for awaiting_approval
+        for (const toolCall of toolCalls) {
+          if (toolCall.status === 'awaiting_approval') {
+            console.log(
+              `⚠️  Tool ${toolCall.request.callId} (${toolCall.request.name}) is awaiting approval`,
+            );
+            const waitingCall = toolCall as WaitingToolCall;
+            this.handleToolAwaitingApproval(sessionId, waitingCall);
+          }
+        }
+      },
+      getPreferredEditor: () => undefined, // Web server doesn't support editor
+      onEditorClose: () => {
+        // No-op for web server
+      },
+    });
+
+    this.toolSchedulers.set(sessionId, scheduler);
+    return scheduler;
+  }
+
+  /**
+   * Handle tool awaiting approval by emitting confirmation event
+   */
+  private handleToolAwaitingApproval(
+    sessionId: string,
+    toolCall: WaitingToolCall,
+  ): void {
+    const callId = toolCall.request.callId;
+    console.log(
+      `🔔 handleToolAwaitingApproval called for ${callId} (${toolCall.request.name})`,
+    );
+
+    // Check if already pending
+    if (this.pendingConfirmations.has(callId)) {
+      console.log(
+        `⚠️  Tool ${callId} already has pending confirmation, skipping`,
+      );
+      return;
+    }
+
+    // Create a promise that will be resolved when user confirms
+    const confirmationPromise = new Promise<ToolConfirmationOutcome>(
+      (resolve, reject) => {
+        this.pendingConfirmations.set(callId, {
+          callId,
+          toolName: toolCall.request.name,
+          confirmationDetails: toolCall.confirmationDetails,
+          resolve,
+          reject,
+        });
+        console.log(`✅ Created pending confirmation for ${callId}`);
+      },
+    );
+
+    // Queue the confirmation event to be sent to the client
+    // Use the proper ServerToolCallConfirmationDetails format
+    console.log(`📝 Queueing confirmation event for ${callId}`);
+    this.queueEvent(sessionId, {
+      type: GeminiEventType.ToolCallConfirmation,
+      value: {
+        request: toolCall.request,
+        details: toolCall.confirmationDetails,
+      },
+    });
+
+    // Hook up the confirmation promise to the onConfirm callback
+    confirmationPromise
+      .then((outcome) => {
+        console.log(`✅ Confirmation resolved for ${callId}: ${outcome}`);
+        return toolCall.confirmationDetails.onConfirm(outcome);
+      })
+      .catch((error) => {
+        console.error(`❌ Error handling confirmation for ${callId}:`, error);
+      });
+  }
+
+  /**
+   * Queue an event to be injected into the SSE stream
+   */
+  private queueEvent(
+    sessionId: string,
+    event: ServerGeminiStreamEvent,
+  ): Promise<void> {
+    return new Promise<void>((resolve) => {
+      let queue = this.eventQueues.get(sessionId);
+      if (!queue) {
+        queue = [];
+        this.eventQueues.set(sessionId, queue);
+      }
+      queue.push({ event, resolve });
+    });
+  }
+
+  /**
+   * Wait for tools to complete execution
+   */
+  private waitForToolsComplete(
+    sessionId: string,
+  ): Promise<CompletedToolCall[]> {
+    return new Promise<CompletedToolCall[]>((resolve, reject) => {
+      this.toolsCompletePromises.set(sessionId, { resolve, reject });
+    });
   }
 
   /**
@@ -135,6 +313,7 @@ export class AgentService {
 
   /**
    * Send a message and stream the response (returns raw ServerGeminiStreamEvent)
+   * Implements tool execution loop with continuation
    */
   async *streamMessage(
     sessionId: string,
@@ -151,17 +330,152 @@ export class AgentService {
       // Create abort controller for cancellation support
       const abortController = new AbortController();
 
-      // Stream the response using sendMessageStream
-      const streamEvents = session.client.sendMessageStream(
-        message,
-        abortController.signal,
-        sessionId,
-      );
+      // Get or create scheduler for this session
+      const scheduler = this.getOrCreateScheduler(sessionId);
 
-      // Directly yield raw events without conversion
-      for await (const event of streamEvents) {
-        yield event;
+      // Initialize event queue for this session
+      if (!this.eventQueues.has(sessionId)) {
+        this.eventQueues.set(sessionId, []);
       }
+
+      let currentMessage: string | Part[] = message;
+      let hasMoreTurns = true;
+
+      // Tool execution loop
+      while (hasMoreTurns) {
+        // Collect tool calls from this turn
+        const toolCallsInTurn: ToolCallRequestInfo[] = [];
+        let hasToolCalls = false;
+
+        // Stream the response using sendMessageStream
+        // Note: turns=1 to handle one AI response at a time
+        const streamGenerator = session.client.sendMessageStream(
+          currentMessage,
+          abortController.signal,
+          sessionId,
+          1, // Process one turn at a time
+        );
+
+        // Process events from AI
+        for await (const event of streamGenerator) {
+          // Check for queued events and yield them first
+          const queue = this.eventQueues.get(sessionId);
+          if (queue && queue.length > 0) {
+            const queuedItems = queue.splice(0, queue.length);
+            for (const item of queuedItems) {
+              yield item.event;
+              item.resolve();
+            }
+          }
+
+          // Yield the current event
+          yield event;
+
+          // Collect tool calls
+          if (event.type === GeminiEventType.ToolCallRequest) {
+            hasToolCalls = true;
+            toolCallsInTurn.push({
+              callId: event.value.callId,
+              name: event.value.name,
+              args: event.value.args,
+              prompt_id: sessionId,
+              isClientInitiated: false,
+            });
+          }
+
+          // Check if turn is complete (error or finished)
+          if (
+            event.type === GeminiEventType.Finished ||
+            event.type === GeminiEventType.Error
+          ) {
+            hasMoreTurns = false;
+          }
+        }
+
+        // If no tool calls, we're done with the loop
+        if (!hasToolCalls || toolCallsInTurn.length === 0) {
+          console.log(`✅ No tool calls in this turn, ending loop`);
+          break;
+        }
+
+        console.log(
+          `🔧 Scheduling ${toolCallsInTurn.length} tool(s):`,
+          toolCallsInTurn.map((t) => `${t.name}(${t.callId})`),
+        );
+
+        // CRITICAL: Create the waitForToolsComplete promise BEFORE calling schedule()
+        // because schedule() may synchronously complete tools and call onAllToolCallsComplete
+        console.log(`⏳ Creating waitForToolsComplete promise...`);
+        const toolsCompletePromise = this.waitForToolsComplete(sessionId);
+
+        // Schedule tool calls
+        await scheduler.schedule(toolCallsInTurn, abortController.signal);
+
+        console.log(`✅ scheduler.schedule() completed`);
+
+        // IMPORTANT: After scheduling, yield any queued events (like confirmation requests)
+        // that were added by CoreToolScheduler during schedule()
+        // The for-await loop above has ended, so we need to manually yield queued events
+        const queueAfterSchedule = this.eventQueues.get(sessionId);
+        console.log(
+          `📦 Queue after schedule: ${queueAfterSchedule?.length || 0} events`,
+        );
+        if (queueAfterSchedule && queueAfterSchedule.length > 0) {
+          const queuedItems = queueAfterSchedule.splice(
+            0,
+            queueAfterSchedule.length,
+          );
+          console.log(`📤 Yielding ${queuedItems.length} queued events`);
+          for (const item of queuedItems) {
+            yield item.event;
+            item.resolve();
+          }
+        }
+
+        console.log(`⏳ Waiting for tools to complete...`);
+        // Wait for all tools to complete (including confirmations)
+        const completedTools = await toolsCompletePromise;
+        console.log(`✅ Tools completed: ${completedTools.length}`);
+
+        // Check for any queued events after tool completion
+        const queue = this.eventQueues.get(sessionId);
+        if (queue && queue.length > 0) {
+          const queuedItems = queue.splice(0, queue.length);
+          for (const item of queuedItems) {
+            yield item.event;
+            item.resolve();
+          }
+        }
+
+        // Emit tool completion events
+        for (const tool of completedTools) {
+          yield {
+            type: GeminiEventType.ToolCallResponse,
+            value: {
+              callId: tool.request.callId,
+              responseParts: tool.response.responseParts,
+              resultDisplay: tool.response.resultDisplay,
+              error: tool.response.error,
+              errorType: tool.response.errorType,
+              outputFile: tool.response.outputFile,
+              contentLength: tool.response.contentLength,
+            },
+          };
+        }
+
+        // Prepare for continuation
+        // Tool results are already in history via CoreToolScheduler
+        // Send the tool results as the next message
+        currentMessage = completedTools.flatMap((tool) =>
+          tool.response.responseParts ? tool.response.responseParts : [],
+        );
+
+        // Continue to next turn
+        hasMoreTurns = true;
+      }
+
+      // Clean up event queue
+      this.eventQueues.delete(sessionId);
     } catch (error) {
       console.error(
         `❌ Error streaming message in session ${sessionId}:`,
@@ -213,6 +527,28 @@ export class AgentService {
    * Delete a session
    */
   deleteSession(sessionId: string): boolean {
+    // Clean up scheduler
+    this.toolSchedulers.delete(sessionId);
+
+    // Clean up event queue
+    this.eventQueues.delete(sessionId);
+
+    // Clean up pending confirmations for this session
+    // Note: We reject all pending confirmations when session is deleted
+    // This is safe because confirmations are session-specific
+    for (const [callId, confirmation] of this.pendingConfirmations.entries()) {
+      confirmation.reject(new Error('Session deleted'));
+      this.pendingConfirmations.delete(callId);
+    }
+
+    // Clean up tools complete promise
+    const toolsPromise = this.toolsCompletePromises.get(sessionId);
+    if (toolsPromise) {
+      toolsPromise.reject(new Error('Session deleted'));
+      this.toolsCompletePromises.delete(sessionId);
+    }
+
+    // Remove session from manager
     const removed = this.sessionManager.removeSession(sessionId);
     if (removed) {
       console.log(`🗑️  Deleted session: ${sessionId}`);
@@ -285,11 +621,7 @@ export class AgentService {
 
   /**
    * Confirm a tool execution
-   *
-   * NOTE: This is a stub implementation. Full implementation requires:
-   * 1. CoreToolScheduler integration in streamMessage
-   * 2. onToolCallsUpdate callback to capture confirmation handlers
-   * 3. Promise-based coordination between streaming and confirmation
+   * This resolves the promise that CoreToolScheduler is waiting on
    */
   async confirmToolCall(
     sessionId: string,
@@ -330,10 +662,6 @@ export class AgentService {
           break;
       }
 
-      // Resolve the pending confirmation
-      pending.resolve(outcome);
-      this.pendingConfirmations.delete(callId);
-
       // Update ApprovalMode if ProceedAlways
       let newApprovalMode:
         | 'plan'
@@ -363,6 +691,15 @@ export class AgentService {
           newApprovalMode = 'yolo';
         }
       }
+
+      // Resolve the pending confirmation promise
+      // This will trigger CoreToolScheduler to continue execution
+      pending.resolve(outcome);
+      this.pendingConfirmations.delete(callId);
+
+      console.log(
+        `✅ Confirmed tool ${pending.toolName} (${callId}): ${outcome}`,
+      );
 
       return {
         success: true,
