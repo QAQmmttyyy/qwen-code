@@ -637,30 +637,19 @@ export class CoreToolScheduler {
   ): Promise<void> {
     if (this.isRunning() || this.isScheduling) {
       return new Promise((resolve, reject) => {
-        const abortHandler = () => {
-          // Find and remove the request from the queue
-          const index = this.requestQueue.findIndex(
-            (item) => item.request === request,
-          );
-          if (index > -1) {
-            this.requestQueue.splice(index, 1);
-            reject(new Error('Tool call cancelled while in queue.'));
-          }
-        };
+        // Check if already aborted before queueing
+        if (signal.aborted) {
+          reject(new Error('Tool call cancelled before scheduling.'));
+          return;
+        }
 
-        signal.addEventListener('abort', abortHandler, { once: true });
-
+        // Store the request in the queue without adding listeners immediately
+        // Listeners will be checked when the request is processed from the queue
         this.requestQueue.push({
           request,
           signal,
-          resolve: () => {
-            signal.removeEventListener('abort', abortHandler);
-            resolve();
-          },
-          reject: (reason?: Error) => {
-            signal.removeEventListener('abort', abortHandler);
-            reject(reason);
-          },
+          resolve,
+          reject,
         });
       });
     }
@@ -1228,9 +1217,14 @@ export class CoreToolScheduler {
       // After completion, process the next item in the queue.
       if (this.requestQueue.length > 0) {
         const next = this.requestQueue.shift()!;
-        this._schedule(next.request, next.signal)
-          .then(next.resolve)
-          .catch(next.reject);
+        // Check if the signal was aborted while waiting in queue
+        if (next.signal.aborted) {
+          next.reject(new Error('Tool call cancelled while in queue.'));
+        } else {
+          this._schedule(next.request, next.signal)
+            .then(next.resolve)
+            .catch(next.reject);
+        }
       }
     }
   }
