@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+### Web Server
+
+- Fixed SSE streaming response buffering issue caused by compression middleware
+  - Configured compression filter to exclude `text/event-stream` content type
+  - SSE events now stream in real-time instead of being buffered (10-30s delay → <1s)
+  - Significantly improved user experience for web-based clients
+  - Added comprehensive documentation comparing compression strategies
+  - Added automated test script (`scripts/test-sse-streaming.sh`) for SSE validation
+  - Note: `res.flush()` approach not used as it's only available when compression is enabled
+
 ## 0.0.14
 
 - Added plan mode support for task planning
