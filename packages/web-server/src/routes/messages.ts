@@ -55,6 +55,10 @@ export function createMessageRoutes(agentService: AgentService): Router {
           JSON.stringify(event, null, 2),
         );
         res.write(`data: ${JSON.stringify(event)}\n\n`);
+
+        // Flush immediately for real-time streaming
+        // See: https://github.com/expressjs/compression#server-sent-events
+        res.flush();
       }
 
       const duration = Date.now() - startTime;
