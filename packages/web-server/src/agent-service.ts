@@ -316,30 +316,32 @@ export class AgentService {
           parts: this.partListUnionToParts(message.content),
         });
       } else if (message.type === 'qwen') {
-        const parts: Part[] = [];
+        const modelParts: Part[] = [];
+        const functionResponses: Part[] = [];
 
         // Add text content
         if (message.content) {
-          parts.push(...this.partListUnionToParts(message.content));
+          modelParts.push(...this.partListUnionToParts(message.content));
         }
 
         // Add tool calls if any
         if ('toolCalls' in message && message.toolCalls) {
           for (const toolCall of message.toolCalls) {
-            parts.push({
+            // Add functionCall to model parts
+            modelParts.push({
               functionCall: {
                 name: toolCall.name,
                 args: toolCall.args,
               },
             });
 
-            // Add tool response if available
+            // Collect tool responses separately
             if (toolCall.result) {
               const responseParts = this.partListUnionToParts(toolCall.result);
               const output = responseParts
                 .map((part) => ('text' in part ? part.text : ''))
                 .join('');
-              parts.push({
+              functionResponses.push({
                 functionResponse: {
                   name: toolCall.name,
                   response: { output },
@@ -349,10 +351,19 @@ export class AgentService {
           }
         }
 
-        if (parts.length > 0) {
+        // Add model message (text + functionCalls)
+        if (modelParts.length > 0) {
           history.push({
             role: 'model',
-            parts,
+            parts: modelParts,
+          });
+        }
+
+        // Add function responses as a separate user message
+        if (functionResponses.length > 0) {
+          history.push({
+            role: 'user',
+            parts: functionResponses,
           });
         }
       }
@@ -519,6 +530,16 @@ export class AgentService {
         const toolCallsInTurn: ToolCallRequestInfo[] = [];
         let hasToolCalls = false;
 
+        // Debug: Log current history before sending message
+        const currentHistory = session.client.getHistory();
+        console.log(
+          `📤 Sending message to Gemini. Current history length: ${currentHistory.length}`,
+        );
+        console.log(
+          `📝 Last 2 history items:`,
+          JSON.stringify(currentHistory.slice(-2), null, 2),
+        );
+
         // Stream the response using sendMessageStream
         // Note: turns=1 to handle one AI response at a time
         const streamGenerator = session.client.sendMessageStream(
@@ -673,6 +694,77 @@ export class AgentService {
       sessionId,
       history,
       messageCount: metadata?.messageCount || 0,
+    };
+  }
+
+  /**
+   * Load conversation history into an existing session
+   */
+  async loadHistoryIntoSession(
+    sessionId: string,
+    filename: string,
+  ): Promise<{ success: boolean; messageCount: number }> {
+    const session = this.sessionManager.getSession(sessionId);
+    if (!session) {
+      throw new Error(`Session not found: ${sessionId}`);
+    }
+
+    const metadata = this.sessionManager.getSessionMetadata(sessionId);
+    if (!metadata) {
+      throw new Error(`Session metadata not found: ${sessionId}`);
+    }
+
+    // Load conversation history from file
+    const resumedSessionData = await this.loadConversationHistory(
+      metadata.workspaceRoot,
+      filename,
+    );
+
+    if (!resumedSessionData) {
+      throw new Error(`Failed to load conversation history: ${filename}`);
+    }
+
+    // Convert messages to Gemini Content format
+    const history = this.convertMessagesToHistory(
+      resumedSessionData.conversation,
+    );
+
+    // Remove trailing user messages to avoid consecutive user messages when sending new message
+    // Gemini API requires alternating user/model messages
+    while (history.length > 0 && history[history.length - 1]?.role === 'user') {
+      const removed = history.pop();
+      console.log(
+        `🗑️  Removed trailing user message to avoid consecutive user messages`,
+        removed,
+      );
+    }
+
+    // Debug: Log the converted history structure
+    console.log(
+      `📝 Converted history (${history.length} items):`,
+      JSON.stringify(history, null, 2),
+    );
+
+    // Set the history in the client
+    session.client.setHistory(history);
+
+    // Strip thoughts from history (like CLI does)
+    session.client.stripThoughtsFromHistory();
+
+    console.log(
+      `✅ Loaded ${history.length} history items into session ${sessionId}`,
+    );
+
+    // Update ChatRecordingService
+    const chatRecordingService = session.client.getChatRecordingService();
+    if (chatRecordingService) {
+      chatRecordingService.initialize(resumedSessionData);
+      console.log(`✅ Initialized ChatRecordingService with resumed session`);
+    }
+
+    return {
+      success: true,
+      messageCount: history.length,
     };
   }
 

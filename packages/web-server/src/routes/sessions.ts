@@ -220,5 +220,43 @@ export function createSessionRoutes(agentService: AgentService): Router {
     }
   });
 
+  /**
+   * PUT /api/sessions/:id/history
+   * Load conversation history into an existing session
+   */
+  router.put('/:id/history', async (req: Request, res: Response) => {
+    try {
+      const sessionId = req.params['id'];
+      if (!sessionId) {
+        throw new HttpError(400, 'Session ID is required');
+      }
+
+      const { filename } = req.body;
+      if (!filename) {
+        throw new HttpError(400, 'Filename is required');
+      }
+
+      console.log(
+        `📜 Loading history into session: ${sessionId} from ${filename}`,
+      );
+      const result = await agentService.loadHistoryIntoSession(
+        sessionId,
+        filename,
+      );
+      console.log(`✅ History loaded: ${result.messageCount} messages`);
+      res.json(result);
+    } catch (error) {
+      if (error instanceof Error && error.message.includes('not found')) {
+        console.error(`❌ Session or file not found: ${req.params['id']}`);
+        throw new HttpError(404, error.message);
+      }
+      console.error('❌ Failed to load history:', error);
+      throw new HttpError(
+        500,
+        `Failed to load history: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  });
+
   return router;
 }
