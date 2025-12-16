@@ -16,6 +16,7 @@ import { requestLogger } from './middleware/request-logger.js';
 import { createSessionRoutes } from './routes/sessions.js';
 import { createMessageRoutes } from './routes/messages.js';
 import { createHealthRoutes } from './routes/health.js';
+import { createHistoryRoutes } from './routes/history.js';
 import type { ServerConfig } from './types.js';
 
 /**
@@ -62,6 +63,7 @@ export function createApp(config: ServerConfig): Express {
   // API routes
   app.use('/api/sessions', createSessionRoutes(agentService));
   app.use('/api/sessions', createMessageRoutes(agentService));
+  app.use('/api/history', createHistoryRoutes());
 
   // 404 handler
   app.use(notFoundHandler);

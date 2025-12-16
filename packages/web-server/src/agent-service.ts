@@ -5,6 +5,10 @@
  */
 
 import { randomUUID } from 'node:crypto';
+import * as fs from 'node:fs/promises';
+import * as path from 'node:path';
+import * as os from 'node:os';
+import * as crypto from 'node:crypto';
 import {
   Config,
   ApprovalMode,
@@ -17,8 +21,10 @@ import {
   type ToolCallRequestInfo,
   type ToolCallConfirmationDetails,
   GeminiEventType,
+  type ResumedSessionData,
+  type ConversationRecord,
 } from '@qwen-code/qwen-code-core';
-import type { Part } from '@google/genai';
+import type { Part, Content } from '@google/genai';
 import { SessionManager } from './session-manager.js';
 import type {
   CreateSessionRequest,
@@ -228,6 +234,134 @@ export class AgentService {
   }
 
   /**
+   * Helper: Get project hash from workspace path
+   */
+  private getProjectHash(projectPath: string): string {
+    return crypto.createHash('sha256').update(projectPath).digest('hex');
+  }
+
+  /**
+   * Helper: Get chats directory for a workspace
+   */
+  private getChatsDir(workspaceRoot: string): string {
+    const hash = this.getProjectHash(workspaceRoot);
+    const homeDir = os.homedir();
+    const qwenDir = path.join(homeDir, '.qwen');
+    return path.join(qwenDir, 'tmp', hash, 'chats');
+  }
+
+  /**
+   * Helper: Load conversation history from file
+   */
+  private async loadConversationHistory(
+    workspaceRoot: string,
+    filename: string,
+  ): Promise<ResumedSessionData | null> {
+    try {
+      const chatsDir = this.getChatsDir(workspaceRoot);
+      const filePath = path.join(chatsDir, filename);
+
+      // Check if file exists
+      await fs.access(filePath);
+
+      // Read and parse the conversation file
+      const content = await fs.readFile(filePath, 'utf-8');
+      const conversation: ConversationRecord = JSON.parse(content);
+
+      console.log(
+        `✅ Loaded conversation history: ${conversation.sessionId} with ${conversation.messages?.length || 0} messages`,
+      );
+
+      return {
+        conversation,
+        filePath,
+      };
+    } catch (error) {
+      console.error('❌ Error loading conversation history:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Helper: Convert PartListUnion to Part[]
+   */
+  private partListUnionToParts(content: unknown): Part[] {
+    if (typeof content === 'string') {
+      return [{ text: content }];
+    }
+    if (Array.isArray(content)) {
+      return content.flatMap((item) => {
+        if (typeof item === 'string') {
+          return [{ text: item }];
+        }
+        return [item as Part];
+      });
+    }
+    // Single Part object
+    return [content as Part];
+  }
+
+  /**
+   * Helper: Convert ConversationRecord messages to Gemini Content format
+   */
+  private convertMessagesToHistory(
+    conversation: ConversationRecord,
+  ): Content[] {
+    const history: Content[] = [];
+
+    for (const message of conversation.messages || []) {
+      if (message.type === 'user') {
+        history.push({
+          role: 'user',
+          parts: this.partListUnionToParts(message.content),
+        });
+      } else if (message.type === 'qwen') {
+        const parts: Part[] = [];
+
+        // Add text content
+        if (message.content) {
+          parts.push(...this.partListUnionToParts(message.content));
+        }
+
+        // Add tool calls if any
+        if ('toolCalls' in message && message.toolCalls) {
+          for (const toolCall of message.toolCalls) {
+            parts.push({
+              functionCall: {
+                name: toolCall.name,
+                args: toolCall.args,
+              },
+            });
+
+            // Add tool response if available
+            if (toolCall.result) {
+              const responseParts = this.partListUnionToParts(toolCall.result);
+              const output = responseParts
+                .map((part) => ('text' in part ? part.text : ''))
+                .join('');
+              parts.push({
+                functionResponse: {
+                  name: toolCall.name,
+                  response: { output },
+                },
+              });
+            }
+          }
+        }
+
+        if (parts.length > 0) {
+          history.push({
+            role: 'model',
+            parts,
+          });
+        }
+      }
+    }
+
+    return history;
+  }
+
+  /**
    * Create a new agent session
    */
   async createSession(
@@ -235,6 +369,21 @@ export class AgentService {
   ): Promise<CreateSessionResponse> {
     const sessionId = randomUUID();
     const workspaceRoot = request.workspaceRoot || this.defaultWorkspaceRoot;
+
+    // Check if resuming from history
+    let resumedSessionData: ResumedSessionData | null = null;
+    if (request.resumeFromHistory) {
+      resumedSessionData = await this.loadConversationHistory(
+        workspaceRoot,
+        request.resumeFromHistory.filename,
+      );
+
+      if (!resumedSessionData) {
+        console.warn(
+          `⚠️  Failed to load conversation history: ${request.resumeFromHistory.filename}`,
+        );
+      }
+    }
 
     try {
       // Parse approvalMode from request (default to YOLO for backward compatibility)
@@ -284,6 +433,29 @@ export class AgentService {
 
       // Get the initialized client from config
       const client = config.getGeminiClient();
+
+      // If resuming from history, load the conversation into the client
+      if (resumedSessionData) {
+        const history = this.convertMessagesToHistory(
+          resumedSessionData.conversation,
+        );
+
+        // Set the history in the client
+        await client.setHistory(history);
+
+        console.log(
+          `✅ Restored ${history.length} history items from conversation`,
+        );
+
+        // Also initialize the ChatRecordingService with resumed data
+        const chatRecordingService = client.getChatRecordingService();
+        if (chatRecordingService) {
+          chatRecordingService.initialize(resumedSessionData);
+          console.log(
+            `✅ Initialized ChatRecordingService with resumed session`,
+          );
+        }
+      }
 
       // Add to session manager
       this.sessionManager.addSession(sessionId, client, config, {

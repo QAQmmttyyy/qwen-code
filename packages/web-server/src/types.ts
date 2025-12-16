@@ -39,6 +39,10 @@ export interface CreateSessionRequest {
   apiKey?: string;
   baseUrl?: string;
   approvalMode?: 'plan' | 'default' | 'auto-edit' | 'yolo';
+  // Optional: Resume from existing conversation history
+  resumeFromHistory?: {
+    filename: string;
+  };
 }
 
 /**
