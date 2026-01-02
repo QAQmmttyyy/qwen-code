@@ -1,3 +1,32 @@
+#!/usr/bin/env sh
+
+# Ensure npm is in PATH
+if ! command -v npm >/dev/null 2>&1; then
+  # Try to find npm via node
+  if command -v node >/dev/null 2>&1; then
+    NODE_PATH=$(command -v node)
+    NPM_DIR=$(dirname "$NODE_PATH")
+    export PATH="$NPM_DIR:$PATH"
+  fi
+  
+  # Try common npm locations (nvm)
+  if ! command -v npm >/dev/null 2>&1; then
+    if [ -d "$HOME/.nvm" ]; then
+      export NVM_DIR="$HOME/.nvm"
+      [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+    fi
+  fi
+  
+  # Try homebrew npm location
+  if ! command -v npm >/dev/null 2>&1; then
+    if [ -f "/opt/homebrew/bin/npm" ]; then
+      export PATH="/opt/homebrew/bin:$PATH"
+    elif [ -f "/usr/local/bin/npm" ]; then
+      export PATH="/usr/local/bin:$PATH"
+    fi
+  fi
+fi
+
 npm run pre-commit || {
   echo ''
   echo '===================================================='
