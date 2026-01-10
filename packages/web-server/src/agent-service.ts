@@ -81,6 +81,113 @@ export class AgentService {
   ) {
     this.sessionManager = new SessionManager(maxSessions, sessionTimeout);
     this.sessionManager.startCleanupTimer();
+
+    // Subscribe to session expiring callback to save checkpoints
+    this.sessionManager.onSessionExpiring = async (sessionId, session) => {
+      await this.saveSessionCheckpoint(sessionId, session);
+    };
+  }
+
+  /**
+   * Get checkpoint directory
+   */
+  private getCheckpointDir(): string {
+    const homeDir = os.homedir();
+    return path.join(homeDir, '.qwen', 'checkpoints');
+  }
+
+  /**
+   * Save session checkpoint before expiration
+   */
+  private async saveSessionCheckpoint(
+    sessionId: string,
+    session: import('./types.js').ActiveSession,
+  ): Promise<void> {
+    try {
+      const history = session.client.getHistory();
+
+      // Only save if there's meaningful history
+      if (history.length <= 2) {
+        console.log(
+          `⏭️  Skipping checkpoint for ${sessionId}: no meaningful history`,
+        );
+        return;
+      }
+
+      const checkpointDir = this.getCheckpointDir();
+      await fs.mkdir(checkpointDir, { recursive: true });
+
+      const checkpointPath = path.join(checkpointDir, `web-${sessionId}.json`);
+      const checkpointData = {
+        sessionId,
+        workspaceRoot: session.metadata.workspaceRoot,
+        savedAt: new Date().toISOString(),
+        history,
+      };
+
+      await fs.writeFile(
+        checkpointPath,
+        JSON.stringify(checkpointData, null, 2),
+        'utf-8',
+      );
+
+      console.log(
+        `💾 Saved checkpoint for expiring session ${sessionId}: ${history.length} history items`,
+      );
+    } catch (error) {
+      console.error(`❌ Failed to save checkpoint for ${sessionId}:`, error);
+    }
+  }
+
+  /**
+   * Load session checkpoint
+   */
+  private async loadSessionCheckpoint(sessionId: string): Promise<{
+    history: Content[];
+    workspaceRoot: string;
+  } | null> {
+    try {
+      const checkpointDir = this.getCheckpointDir();
+      const checkpointPath = path.join(checkpointDir, `web-${sessionId}.json`);
+
+      const content = await fs.readFile(checkpointPath, 'utf-8');
+      const checkpointData = JSON.parse(content);
+
+      console.log(
+        `📂 Loaded checkpoint for ${sessionId}: ${checkpointData.history?.length || 0} history items`,
+      );
+
+      return {
+        history: checkpointData.history || [],
+        workspaceRoot: checkpointData.workspaceRoot,
+      };
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+        console.log(`📂 No checkpoint found for ${sessionId}`);
+        return null;
+      }
+      console.error(`❌ Failed to load checkpoint for ${sessionId}:`, error);
+      return null;
+    }
+  }
+
+  /**
+   * Delete session checkpoint after successful recovery
+   */
+  private async deleteSessionCheckpoint(sessionId: string): Promise<void> {
+    try {
+      const checkpointDir = this.getCheckpointDir();
+      const checkpointPath = path.join(checkpointDir, `web-${sessionId}.json`);
+      await fs.unlink(checkpointPath);
+      console.log(`🗑️  Deleted checkpoint for ${sessionId}`);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+        console.error(
+          `❌ Failed to delete checkpoint for ${sessionId}:`,
+          error,
+        );
+      }
+    }
   }
 
   /**
@@ -502,23 +609,74 @@ export class AgentService {
     sessionId: string,
     message: string,
   ): AsyncGenerator<ServerGeminiStreamEvent> {
-    const session = this.sessionManager.getSession(sessionId);
+    let session = this.sessionManager.getSession(sessionId);
+    let currentSessionId = sessionId;
+
+    // If session not found, try to recover from checkpoint
+    if (!session) {
+      console.log(`🔍 Session ${sessionId} not found, attempting recovery...`);
+
+      const checkpoint = await this.loadSessionCheckpoint(sessionId);
+      if (checkpoint && checkpoint.history.length > 0) {
+        console.log(`🔄 Recovering session ${sessionId} from checkpoint...`);
+
+        try {
+          // Create new session with the same workspace
+          const newSession = await this.createSession({
+            workspaceRoot: checkpoint.workspaceRoot,
+          });
+
+          const newSessionId = newSession.sessionId;
+
+          // Get the new session and restore history
+          session = this.sessionManager.getSession(newSessionId);
+          if (session) {
+            // Restore history to the new session
+            session.client.setHistory(checkpoint.history);
+            console.log(
+              `✅ Restored ${checkpoint.history.length} history items to new session ${newSessionId}`,
+            );
+
+            // Delete the checkpoint after successful recovery
+            await this.deleteSessionCheckpoint(sessionId);
+
+            // Update current session ID
+            currentSessionId = newSessionId;
+
+            // Emit session_renewed event to notify frontend
+            yield {
+              type: 'session_renewed' as const,
+              value: {
+                oldSessionId: sessionId,
+                newSessionId,
+              },
+            } as unknown as ServerGeminiStreamEvent;
+          }
+        } catch (error) {
+          console.error(`❌ Failed to recover session ${sessionId}:`, error);
+          throw new Error(`Session not found: ${sessionId}`);
+        }
+      } else {
+        throw new Error(`Session not found: ${sessionId}`);
+      }
+    }
+
     if (!session) {
       throw new Error(`Session not found: ${sessionId}`);
     }
 
     try {
-      this.sessionManager.incrementMessageCount(sessionId);
+      this.sessionManager.incrementMessageCount(currentSessionId);
 
       // Create abort controller for cancellation support
       const abortController = new AbortController();
 
       // Get or create scheduler for this session
-      const scheduler = this.getOrCreateScheduler(sessionId);
+      const scheduler = this.getOrCreateScheduler(currentSessionId);
 
       // Initialize event queue for this session
-      if (!this.eventQueues.has(sessionId)) {
-        this.eventQueues.set(sessionId, []);
+      if (!this.eventQueues.has(currentSessionId)) {
+        this.eventQueues.set(currentSessionId, []);
       }
 
       let currentMessage: string | Part[] = message;
@@ -545,14 +703,14 @@ export class AgentService {
         const streamGenerator = session.client.sendMessageStream(
           currentMessage,
           abortController.signal,
-          sessionId,
+          currentSessionId,
           1, // Process one turn at a time
         );
 
         // Process events from AI
         for await (const event of streamGenerator) {
           // Check for queued events and yield them first
-          const queue = this.eventQueues.get(sessionId);
+          const queue = this.eventQueues.get(currentSessionId);
           if (queue && queue.length > 0) {
             const queuedItems = queue.splice(0, queue.length);
             for (const item of queuedItems) {
@@ -571,7 +729,7 @@ export class AgentService {
               callId: event.value.callId,
               name: event.value.name,
               args: event.value.args,
-              prompt_id: sessionId,
+              prompt_id: currentSessionId,
               isClientInitiated: false,
             });
           }
@@ -599,7 +757,8 @@ export class AgentService {
         // CRITICAL: Create the waitForToolsComplete promise BEFORE calling schedule()
         // because schedule() may synchronously complete tools and call onAllToolCallsComplete
         console.log(`⏳ Creating waitForToolsComplete promise...`);
-        const toolsCompletePromise = this.waitForToolsComplete(sessionId);
+        const toolsCompletePromise =
+          this.waitForToolsComplete(currentSessionId);
 
         // Schedule tool calls
         await scheduler.schedule(toolCallsInTurn, abortController.signal);
@@ -609,7 +768,7 @@ export class AgentService {
         // IMPORTANT: After scheduling, yield any queued events (like confirmation requests)
         // that were added by CoreToolScheduler during schedule()
         // The for-await loop above has ended, so we need to manually yield queued events
-        const queueAfterSchedule = this.eventQueues.get(sessionId);
+        const queueAfterSchedule = this.eventQueues.get(currentSessionId);
         console.log(
           `📦 Queue after schedule: ${queueAfterSchedule?.length || 0} events`,
         );
@@ -631,7 +790,7 @@ export class AgentService {
         console.log(`✅ Tools completed: ${completedTools.length}`);
 
         // Check for any queued events after tool completion
-        const queue = this.eventQueues.get(sessionId);
+        const queue = this.eventQueues.get(currentSessionId);
         if (queue && queue.length > 0) {
           const queuedItems = queue.splice(0, queue.length);
           for (const item of queuedItems) {
@@ -668,10 +827,10 @@ export class AgentService {
       }
 
       // Clean up event queue
-      this.eventQueues.delete(sessionId);
+      this.eventQueues.delete(currentSessionId);
     } catch (error) {
       console.error(
-        `❌ Error streaming message in session ${sessionId}:`,
+        `❌ Error streaming message in session ${currentSessionId}:`,
         error,
       );
       throw error;

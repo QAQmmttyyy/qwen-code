@@ -8,16 +8,32 @@ import type { ActiveSession, SessionMetadata } from './types.js';
 import type { GeminiClient, Config } from '@qwen-code/qwen-code-core';
 
 /**
+ * Callback type for session expiring event
+ */
+export type SessionExpiringCallback = (
+  sessionId: string,
+  session: ActiveSession,
+) => Promise<void>;
+
+/**
  * Manages active agent sessions with automatic cleanup
  */
 export class SessionManager {
   private sessions = new Map<string, ActiveSession>();
   private cleanupInterval?: NodeJS.Timeout;
+  private _onSessionExpiring?: SessionExpiringCallback;
 
   constructor(
     private readonly maxSessions: number = 100,
     private readonly sessionTimeout: number = 3600000, // 1 hour
   ) {}
+
+  /**
+   * Set callback to be called before a session expires
+   */
+  set onSessionExpiring(callback: SessionExpiringCallback | undefined) {
+    this._onSessionExpiring = callback;
+  }
 
   /**
    * Start the cleanup timer to remove expired sessions
@@ -30,7 +46,9 @@ export class SessionManager {
     // Run cleanup every 5 minutes
     this.cleanupInterval = setInterval(
       () => {
-        this.cleanupExpiredSessions();
+        this.cleanupExpiredSessions().catch((error) => {
+          console.error('❌ Error during session cleanup:', error);
+        });
       },
       5 * 60 * 1000,
     );
@@ -137,19 +155,35 @@ export class SessionManager {
   /**
    * Clean up expired sessions
    */
-  private cleanupExpiredSessions(): void {
+  private async cleanupExpiredSessions(): Promise<void> {
     const now = Date.now();
-    const expiredSessions: string[] = [];
+    const expiredSessions: Array<{
+      sessionId: string;
+      session: ActiveSession;
+    }> = [];
 
     for (const [sessionId, session] of this.sessions.entries()) {
       const lastActivityTime = session.metadata.lastActivity.getTime();
       if (now - lastActivityTime > this.sessionTimeout) {
-        expiredSessions.push(sessionId);
+        expiredSessions.push({ sessionId, session });
       }
     }
 
-    for (const sessionId of expiredSessions) {
+    for (const { sessionId, session } of expiredSessions) {
       console.log(`🗑️  Removing expired session: ${sessionId}`);
+
+      // Call expiring callback before removing (to save checkpoint)
+      if (this._onSessionExpiring) {
+        try {
+          await this._onSessionExpiring(sessionId, session);
+        } catch (error) {
+          console.error(
+            `❌ Error in session expiring callback for ${sessionId}:`,
+            error,
+          );
+        }
+      }
+
       this.removeSession(sessionId);
     }
 

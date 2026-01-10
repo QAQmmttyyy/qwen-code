@@ -125,3 +125,12 @@ export interface ToolConfirmationResponse {
   newApprovalMode?: 'plan' | 'default' | 'auto-edit' | 'yolo';
   error?: string;
 }
+
+/**
+ * Session renewed event - sent when an expired session is auto-recovered
+ */
+export interface SessionRenewedEvent {
+  type: 'session_renewed';
+  oldSessionId: string;
+  newSessionId: string;
+}
