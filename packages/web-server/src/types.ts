@@ -4,8 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import type { Content } from '@google/genai';
-import type { GeminiClient, Config } from '@qwen-code/qwen-code-core';
+import type { Content, GeminiClient, Config } from '@qwen-code/qwen-code-core';
 
 /**
  * Session metadata

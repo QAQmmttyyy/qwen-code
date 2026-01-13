@@ -4,6 +4,9 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+// Re-export types from @google/genai for consumers
+export type { Content, Part, PartListUnion } from '@google/genai';
+
 // Export config
 export * from './config/config.js';
 export * from './output/types.js';

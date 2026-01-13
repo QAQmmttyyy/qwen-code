@@ -23,8 +23,9 @@ import {
   GeminiEventType,
   type ResumedSessionData,
   type ConversationRecord,
+  type Content,
+  type Part,
 } from '@qwen-code/qwen-code-core';
-import type { Part, Content } from '@google/genai';
 import { SessionManager } from './session-manager.js';
 import type {
   CreateSessionRequest,
@@ -379,9 +380,17 @@ export class AgentService {
         `✅ Loaded conversation history: ${conversation.sessionId} with ${conversation.messages?.length || 0} messages`,
       );
 
+      // Find the last completed message UUID
+      const lastCompletedUuid =
+        conversation.messages?.length > 0
+          ? (conversation.messages[conversation.messages.length - 1]?.uuid ??
+            null)
+          : null;
+
       return {
         conversation,
         filePath,
+        lastCompletedUuid,
       };
     } catch (error) {
       console.error('❌ Error loading conversation history:', error);
@@ -390,89 +399,23 @@ export class AgentService {
   }
 
   /**
-   * Helper: Convert PartListUnion to Part[]
-   */
-  private partListUnionToParts(content: unknown): Part[] {
-    if (typeof content === 'string') {
-      return [{ text: content }];
-    }
-    if (Array.isArray(content)) {
-      return content.flatMap((item) => {
-        if (typeof item === 'string') {
-          return [{ text: item }];
-        }
-        return [item as Part];
-      });
-    }
-    // Single Part object
-    return [content as Part];
-  }
-
-  /**
    * Helper: Convert ConversationRecord messages to Gemini Content format
+   * New ChatRecord format uses 'message: Content' field directly
    */
   private convertMessagesToHistory(
     conversation: ConversationRecord,
   ): Content[] {
     const history: Content[] = [];
 
-    for (const message of conversation.messages || []) {
-      if (message.type === 'user') {
-        history.push({
-          role: 'user',
-          parts: this.partListUnionToParts(message.content),
-        });
-      } else if (message.type === 'qwen') {
-        const modelParts: Part[] = [];
-        const functionResponses: Part[] = [];
+    for (const record of conversation.messages || []) {
+      // Skip system records
+      if (record.type === 'system') {
+        continue;
+      }
 
-        // Add text content
-        if (message.content) {
-          modelParts.push(...this.partListUnionToParts(message.content));
-        }
-
-        // Add tool calls if any
-        if ('toolCalls' in message && message.toolCalls) {
-          for (const toolCall of message.toolCalls) {
-            // Add functionCall to model parts
-            modelParts.push({
-              functionCall: {
-                name: toolCall.name,
-                args: toolCall.args,
-              },
-            });
-
-            // Collect tool responses separately
-            if (toolCall.result) {
-              const responseParts = this.partListUnionToParts(toolCall.result);
-              const output = responseParts
-                .map((part) => ('text' in part ? part.text : ''))
-                .join('');
-              functionResponses.push({
-                functionResponse: {
-                  name: toolCall.name,
-                  response: { output },
-                },
-              });
-            }
-          }
-        }
-
-        // Add model message (text + functionCalls)
-        if (modelParts.length > 0) {
-          history.push({
-            role: 'model',
-            parts: modelParts,
-          });
-        }
-
-        // Add function responses as a separate user message
-        if (functionResponses.length > 0) {
-          history.push({
-            role: 'user',
-            parts: functionResponses,
-          });
-        }
+      // New ChatRecord has 'message' field which is already in Content format
+      if (record.message) {
+        history.push(record.message);
       }
     }
 
@@ -565,14 +508,8 @@ export class AgentService {
           `✅ Restored ${history.length} history items from conversation`,
         );
 
-        // Also initialize the ChatRecordingService with resumed data
-        const chatRecordingService = client.getChatRecordingService();
-        if (chatRecordingService) {
-          chatRecordingService.initialize(resumedSessionData);
-          console.log(
-            `✅ Initialized ChatRecordingService with resumed session`,
-          );
-        }
+        // ChatRecordingService is automatically initialized by Config
+        // when resumedSessionData is provided
       }
 
       // Add to session manager
@@ -704,7 +641,8 @@ export class AgentService {
           currentMessage,
           abortController.signal,
           currentSessionId,
-          1, // Process one turn at a time
+          undefined, // options
+          1, // turns - process one turn at a time
         );
 
         // Process events from AI
@@ -914,12 +852,8 @@ export class AgentService {
       `✅ Loaded ${history.length} history items into session ${sessionId}`,
     );
 
-    // Update ChatRecordingService
-    const chatRecordingService = session.client.getChatRecordingService();
-    if (chatRecordingService) {
-      chatRecordingService.initialize(resumedSessionData);
-      console.log(`✅ Initialized ChatRecordingService with resumed session`);
-    }
+    // Note: ChatRecordingService is managed by Config and doesn't need manual initialization
+    // The history is already set in the client above
 
     return {
       success: true,

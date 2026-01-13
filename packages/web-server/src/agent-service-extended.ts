@@ -11,7 +11,7 @@
  * 如需使用，可以将这些方法合并到 agent-service.ts 中
  */
 
-import type { Content } from '@google/genai';
+import type { Content } from '@qwen-code/qwen-code-core';
 import type { AgentService } from './agent-service.js';
 import type { ActiveSession } from './types.js';
 
