@@ -49,6 +49,21 @@ export class EnhancedErrorHandler implements ErrorHandler {
         ? 'OpenAI API Streaming Error:'
         : 'OpenAI API Error:';
       console.error(logPrefix, errorMessage);
+      // Log full error details for debugging
+      if (error && typeof error === 'object') {
+        const errorObj = error as Record<string, unknown>;
+        if (errorObj['status']) console.error('Status:', errorObj['status']);
+        if (errorObj['error'])
+          console.error(
+            'Error details:',
+            JSON.stringify(errorObj['error'], null, 2),
+          );
+        if (errorObj['body'])
+          console.error(
+            'Response body:',
+            JSON.stringify(errorObj['body'], null, 2),
+          );
+      }
     }
 
     // Provide helpful timeout-specific error message

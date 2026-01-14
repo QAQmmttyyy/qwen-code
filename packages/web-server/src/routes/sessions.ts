@@ -223,31 +223,32 @@ export function createSessionRoutes(agentService: AgentService): Router {
   /**
    * PUT /api/sessions/:id/history
    * Load conversation history into an existing session
+   * Body: { sessionId: string } - The history session ID to load (JSONL format)
    */
   router.put('/:id/history', async (req: Request, res: Response) => {
     try {
-      const sessionId = req.params['id'];
-      if (!sessionId) {
+      const targetSessionId = req.params['id'];
+      if (!targetSessionId) {
         throw new HttpError(400, 'Session ID is required');
       }
 
-      const { filename } = req.body;
-      if (!filename) {
-        throw new HttpError(400, 'Filename is required');
+      const { sessionId: historySessionId } = req.body;
+      if (!historySessionId) {
+        throw new HttpError(400, 'History session ID is required');
       }
 
       console.log(
-        `📜 Loading history into session: ${sessionId} from ${filename}`,
+        `📜 Loading history into session: ${targetSessionId} from history session ${historySessionId}`,
       );
       const result = await agentService.loadHistoryIntoSession(
-        sessionId,
-        filename,
+        targetSessionId,
+        historySessionId,
       );
       console.log(`✅ History loaded: ${result.messageCount} messages`);
       res.json(result);
     } catch (error) {
       if (error instanceof Error && error.message.includes('not found')) {
-        console.error(`❌ Session or file not found: ${req.params['id']}`);
+        console.error(`❌ Session or history not found: ${req.params['id']}`);
         throw new HttpError(404, error.message);
       }
       console.error('❌ Failed to load history:', error);

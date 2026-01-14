@@ -25,6 +25,7 @@ import {
   type ConversationRecord,
   type Content,
   type Part,
+  SessionService,
 } from '@qwen-code/qwen-code-core';
 import { SessionManager } from './session-manager.js';
 import type {
@@ -209,6 +210,7 @@ export class AgentService {
     scheduler = new CoreToolScheduler({
       config: session.config,
       outputUpdateHandler: undefined, // Web server doesn't stream live output for now
+      chatRecordingService: session.config.getChatRecordingService(),
       onAllToolCallsComplete: async (completedToolCalls) => {
         console.log(
           `✅ onAllToolCallsComplete called with ${completedToolCalls.length} tools`,
@@ -474,7 +476,7 @@ export class AgentService {
         sessionId,
         targetDir: workspaceRoot,
         cwd: workspaceRoot,
-        model: request.model || 'qwen-max',
+        model: request.model || 'minimax/minimax-m2.1',
         approvalMode,
         debugMode: false,
         generationConfig: {
@@ -618,6 +620,7 @@ export class AgentService {
 
       let currentMessage: string | Part[] = message;
       let hasMoreTurns = true;
+      let isFirstTurn = true;
 
       // Tool execution loop
       while (hasMoreTurns) {
@@ -637,11 +640,13 @@ export class AgentService {
 
         // Stream the response using sendMessageStream
         // Note: turns=1 to handle one AI response at a time
+        // For continuation turns (after tool execution), set isContinuation to avoid
+        // recording tool results as user messages (they're already recorded by CoreToolScheduler)
         const streamGenerator = session.client.sendMessageStream(
           currentMessage,
           abortController.signal,
           currentSessionId,
-          undefined, // options
+          isFirstTurn ? undefined : { isContinuation: true },
           1, // turns - process one turn at a time
         );
 
@@ -754,14 +759,15 @@ export class AgentService {
         }
 
         // Prepare for continuation
-        // Tool results are already in history via CoreToolScheduler
+        // Tool results are already recorded by CoreToolScheduler as type: 'tool_result'
         // Send the tool results as the next message
         currentMessage = completedTools.flatMap((tool) =>
           tool.response.responseParts ? tool.response.responseParts : [],
         );
 
-        // Continue to next turn
+        // Continue to next turn (mark as continuation to avoid duplicate recording)
         hasMoreTurns = true;
+        isFirstTurn = false;
       }
 
       // Clean up event queue
@@ -796,10 +802,12 @@ export class AgentService {
 
   /**
    * Load conversation history into an existing session
+   * @param sessionId - The target session ID to load history into
+   * @param historySessionId - The session ID of the history to load (JSONL format)
    */
   async loadHistoryIntoSession(
     sessionId: string,
-    filename: string,
+    historySessionId: string,
   ): Promise<{ success: boolean; messageCount: number }> {
     const session = this.sessionManager.getSession(sessionId);
     if (!session) {
@@ -811,14 +819,13 @@ export class AgentService {
       throw new Error(`Session metadata not found: ${sessionId}`);
     }
 
-    // Load conversation history from file
-    const resumedSessionData = await this.loadConversationHistory(
-      metadata.workspaceRoot,
-      filename,
-    );
+    // Use SessionService to load history from JSONL format
+    const sessionService = new SessionService(metadata.workspaceRoot);
+    const resumedSessionData =
+      await sessionService.loadSession(historySessionId);
 
     if (!resumedSessionData) {
-      throw new Error(`Failed to load conversation history: ${filename}`);
+      throw new Error(`History session not found: ${historySessionId}`);
     }
 
     // Convert messages to Gemini Content format
