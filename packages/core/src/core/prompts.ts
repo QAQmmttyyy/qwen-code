@@ -163,7 +163,7 @@ It is critical that you mark todos as completed as soon as you are done with a t
 Examples:
 
 <example>
-user: 创建一个完整的设置页面，包含用户资料、通知偏好和主题切换
+user: Create a complete settings page with user profile, notification preferences, and theme toggle
 assistant: I'm going to use the ${ToolNames.TODO_WRITE} tool to plan this task:
 - Audit existing components (Card, Switch, Avatar, Form elements)
 - Create ProfileSection component
@@ -184,7 +184,7 @@ ProfileSection is done, marking as completed. Moving to NotificationSettings...
 In the above example, the assistant breaks down a complex UI task into component-level todos and completes them systematically.
 
 <example>
-user: 重构这些表单组件，统一它们的样式和间距
+user: Refactor these form components to unify their styles and spacing
 
 A: I'll help refactor the form components. Let me first use the ${ToolNames.TODO_WRITE} tool to plan this task.
 Adding the following todos:
@@ -492,81 +492,81 @@ To help you check their settings, I can read their contents. Which one would you
 </example>
 
 <example>
-user: 我想要一个带进度指示的上传按钮
+user: I want an upload button with progress indicator
 model:
-我来创建这个组件。先检查现有的设计系统资源。
+I'll create this component. First, let me check the existing design system resources.
 [tool_call: ${ToolNames.GLOB} for pattern '**/ui/button*']
 [tool_call: ${ToolNames.READ_FILE} for path '/path/to/src/app/globals.css']
 [tool_call: ${ToolNames.READ_FILE} for path '/path/to/components.json']
 (After analysis)
-**组件审计：**
-- 可复用：\`Button\` 基础组件
-- 需新增：进度条叠加层、上传状态管理
+**Component Audit:**
+- Reusable: \`Button\` base component
+- New: Progress overlay, upload state management
 
-**实现计划：**
-1. 创建 \`UploadButton\` 组合 \`Button\` + 进度指示
-2. 使用项目的 \`--primary\` 色作为进度条颜色
-3. 支持 idle/uploading/success/error 四种状态
+**Implementation Plan:**
+1. Create \`UploadButton\` composing \`Button\` + progress indicator
+2. Use project's \`--primary\` color for progress bar
+3. Support idle/uploading/success/error states
 
 [tool_call: ${ToolNames.WRITE_FILE} for path '/path/to/src/components/ui/upload-button.tsx']
 [tool_call: ${ToolNames.SHELL} for 'npx tsc --noEmit']
 </example>
 
 <example>
-user: 这个按钮的 hover 效果和现有风格不一致，帮我调整
+user: This button's hover effect doesn't match the existing style, please fix it
 model:
-我来检查项目中按钮组件的现有样式约定。
+I'll check the existing button style conventions in the project.
 [tool_call: ${ToolNames.READ_FILE} for path '/path/to/src/components/ui/button.tsx']
 [tool_call: ${ToolNames.GREP} for pattern 'hover:' in path 'src/components/']
 (After analysis)
-项目的按钮 hover 约定是：
-- 使用 \`transition-colors\` 过渡
-- hover 时亮度变化（\`hover:bg-primary/90\`）
-- 持续时间 150ms
+The project's button hover conventions are:
+- Use \`transition-colors\` for transitions
+- Brightness change on hover (\`hover:bg-primary/90\`)
+- Duration 150ms
 
-你的按钮使用了 \`hover:bg-blue-600\` 硬编码颜色，应改为使用 CSS 变量。
+Your button uses hardcoded \`hover:bg-blue-600\`, should use CSS variables instead.
 [tool_call: ${ToolNames.EDIT} for path 'src/components/MyButton.tsx' replacing old hover styles with design system compliant styles]
 </example>
 
 <example>
-user: 给这个列表加个空状态
+user: Add an empty state to this list
 model:
-我来为列表创建空状态组件。
+I'll create an empty state component for the list.
 [tool_call: ${ToolNames.GREP} for pattern 'empty|Empty' in path 'src/components/']
 (After analysis)
-项目中还没有统一的空状态组件，我来创建一个符合现有风格的：
-- 使用 \`text-muted-foreground\` 颜色
-- 居中布局
-- 配合项目的 icon 库
+The project doesn't have a unified empty state component yet. I'll create one that matches the existing style:
+- Use \`text-muted-foreground\` color
+- Centered layout
+- Use project's icon library
 
 [tool_call: ${ToolNames.WRITE_FILE} for path '/path/to/src/components/ui/empty-state.tsx']
-然后在列表组件中使用：
+Then use it in the list component:
 [tool_call: ${ToolNames.EDIT} for path 'src/components/MyList.tsx' adding empty state when data is empty]
 </example>
 
 <example>
-user: 做一个用户信息卡片，要有头像、名字、简介和操作按钮
+user: Create a user info card with avatar, name, bio, and action buttons
 model:
-我来组合现有组件创建用户信息卡片。先检查可用的基础组件。
+I'll compose existing components to create the user info card. First, let me check available base components.
 [tool_call: ${ToolNames.GLOB} for pattern '**/ui/*.tsx']
 [tool_call: ${ToolNames.READ_FILE} for path '/path/to/src/components/ui/avatar.tsx']
 [tool_call: ${ToolNames.READ_FILE} for path '/path/to/src/components/ui/card.tsx']
 [tool_call: ${ToolNames.READ_FILE} for path '/path/to/src/components/ui/button.tsx']
 (After analysis)
-**可复用组件：**
-- \`Avatar\` - 头像展示
-- \`Card\`, \`CardHeader\`, \`CardContent\`, \`CardFooter\` - 卡片结构
-- \`Button\` - 操作按钮
+**Reusable Components:**
+- \`Avatar\` - Avatar display
+- \`Card\`, \`CardHeader\`, \`CardContent\`, \`CardFooter\` - Card structure
+- \`Button\` - Action buttons
 
-**组件组合方案：**
+**Composition Plan:**
 \`\`\`
 UserCard
 ├── Card
 │   ├── CardHeader
 │   │   ├── Avatar
-│   │   └── 名字 + 简介
+│   │   └── Name + Bio
 │   └── CardFooter
-│       └── Button (操作)
+│       └── Button (actions)
 \`\`\`
 
 [tool_call: ${ToolNames.WRITE_FILE} for path '/path/to/src/components/user-card.tsx']
@@ -609,9 +609,9 @@ To help you check their settings, I can read their contents. Which one would you
 </example>
 
 <example>
-user: 我想要一个带进度指示的上传按钮
+user: I want an upload button with progress indicator
 model:
-我来创建这个组件。先检查现有的设计系统资源。
+I'll create this component. First, let me check the existing design system resources.
 <tool_call>
 <function=${ToolNames.GLOB}>
 <parameter=pattern>
@@ -634,14 +634,14 @@ model:
 </function>
 </tool_call>
 (After analysis)
-**组件审计：**
-- 可复用：\`Button\` 基础组件
-- 需新增：进度条叠加层、上传状态管理
+**Component Audit:**
+- Reusable: \`Button\` base component
+- New: Progress overlay, upload state management
 
-**实现计划：**
-1. 创建 \`UploadButton\` 组合 \`Button\` + 进度指示
-2. 使用项目的 \`--primary\` 色作为进度条颜色
-3. 支持 idle/uploading/success/error 四种状态
+**Implementation Plan:**
+1. Create \`UploadButton\` composing \`Button\` + progress indicator
+2. Use project's \`--primary\` color for progress bar
+3. Support idle/uploading/success/error states
 
 <tool_call>
 <function=${ToolNames.WRITE_FILE}>
@@ -660,9 +660,9 @@ npx tsc --noEmit
 </example>
 
 <example>
-user: 这个按钮的 hover 效果和现有风格不一致，帮我调整
+user: This button's hover effect doesn't match the existing style, please fix it
 model:
-我来检查项目中按钮组件的现有样式约定。
+I'll check the existing button style conventions in the project.
 <tool_call>
 <function=${ToolNames.READ_FILE}>
 <parameter=path>
@@ -681,12 +681,12 @@ src/components/
 </function>
 </tool_call>
 (After analysis)
-项目的按钮 hover 约定是：
-- 使用 \`transition-colors\` 过渡
-- hover 时亮度变化（\`hover:bg-primary/90\`）
-- 持续时间 150ms
+The project's button hover conventions are:
+- Use \`transition-colors\` for transitions
+- Brightness change on hover (\`hover:bg-primary/90\`)
+- Duration 150ms
 
-你的按钮使用了 \`hover:bg-blue-600\` 硬编码颜色，应改为使用 CSS 变量。
+Your button uses hardcoded \`hover:bg-blue-600\`, should use CSS variables instead.
 <tool_call>
 <function=${ToolNames.EDIT}>
 <parameter=path>
@@ -703,9 +703,9 @@ src/components/MyButton.tsx
 </example>
 
 <example>
-user: 给这个列表加个空状态
+user: Add an empty state to this list
 model:
-我来为列表创建空状态组件。
+I'll create an empty state component for the list.
 <tool_call>
 <function=${ToolNames.GREP}>
 <parameter=pattern>
@@ -717,10 +717,10 @@ src/components/
 </function>
 </tool_call>
 (After analysis)
-项目中还没有统一的空状态组件，我来创建一个符合现有风格的：
-- 使用 \`text-muted-foreground\` 颜色
-- 居中布局
-- 配合项目的 icon 库
+The project doesn't have a unified empty state component yet. I'll create one that matches the existing style:
+- Use \`text-muted-foreground\` color
+- Centered layout
+- Use project's icon library
 
 <tool_call>
 <function=${ToolNames.WRITE_FILE}>
@@ -729,7 +729,7 @@ src/components/
 </parameter>
 </function>
 </tool_call>
-然后在列表组件中使用：
+Then use it in the list component:
 <tool_call>
 <function=${ToolNames.EDIT}>
 <parameter=path>
@@ -746,9 +746,9 @@ src/components/MyList.tsx
 </example>
 
 <example>
-user: 做一个用户信息卡片，要有头像、名字、简介和操作按钮
+user: Create a user info card with avatar, name, bio, and action buttons
 model:
-我来组合现有组件创建用户信息卡片。先检查可用的基础组件。
+I'll compose existing components to create the user info card. First, let me check available base components.
 <tool_call>
 <function=${ToolNames.GLOB}>
 <parameter=pattern>
@@ -778,20 +778,20 @@ model:
 </function>
 </tool_call>
 (After analysis)
-**可复用组件：**
-- \`Avatar\` - 头像展示
-- \`Card\`, \`CardHeader\`, \`CardContent\`, \`CardFooter\` - 卡片结构
-- \`Button\` - 操作按钮
+**Reusable Components:**
+- \`Avatar\` - Avatar display
+- \`Card\`, \`CardHeader\`, \`CardContent\`, \`CardFooter\` - Card structure
+- \`Button\` - Action buttons
 
-**组件组合方案：**
+**Composition Plan:**
 \`\`\`
 UserCard
 ├── Card
 │   ├── CardHeader
 │   │   ├── Avatar
-│   │   └── 名字 + 简介
+│   │   └── Name + Bio
 │   └── CardFooter
-│       └── Button (操作)
+│       └── Button (actions)
 \`\`\`
 
 <tool_call>
@@ -835,9 +835,9 @@ To help you check their settings, I can read their contents. Which one would you
 </example>
 
 <example>
-user: 我想要一个带进度指示的上传按钮
+user: I want an upload button with progress indicator
 model:
-我来创建这个组件。先检查现有的设计系统资源。
+I'll create this component. First, let me check the existing design system resources.
 <tool_call>
 {"name": "${ToolNames.GLOB}", "arguments": {"pattern": "**/ui/button*"}}
 </tool_call>
@@ -848,14 +848,14 @@ model:
 {"name": "${ToolNames.READ_FILE}", "arguments": {"path": "/path/to/components.json"}}
 </tool_call>
 (After analysis)
-**组件审计：**
-- 可复用：\`Button\` 基础组件
-- 需新增：进度条叠加层、上传状态管理
+**Component Audit:**
+- Reusable: \`Button\` base component
+- New: Progress overlay, upload state management
 
-**实现计划：**
-1. 创建 \`UploadButton\` 组合 \`Button\` + 进度指示
-2. 使用项目的 \`--primary\` 色作为进度条颜色
-3. 支持 idle/uploading/success/error 四种状态
+**Implementation Plan:**
+1. Create \`UploadButton\` composing \`Button\` + progress indicator
+2. Use project's \`--primary\` color for progress bar
+3. Support idle/uploading/success/error states
 
 <tool_call>
 {"name": "${ToolNames.WRITE_FILE}", "arguments": {"path": "/path/to/src/components/ui/upload-button.tsx"}}
@@ -866,9 +866,9 @@ model:
 </example>
 
 <example>
-user: 这个按钮的 hover 效果和现有风格不一致，帮我调整
+user: This button's hover effect doesn't match the existing style, please fix it
 model:
-我来检查项目中按钮组件的现有样式约定。
+I'll check the existing button style conventions in the project.
 <tool_call>
 {"name": "${ToolNames.READ_FILE}", "arguments": {"path": "/path/to/src/components/ui/button.tsx"}}
 </tool_call>
@@ -876,43 +876,43 @@ model:
 {"name": "${ToolNames.GREP}", "arguments": {"pattern": "hover:", "path": "src/components/"}}
 </tool_call>
 (After analysis)
-项目的按钮 hover 约定是：
-- 使用 \`transition-colors\` 过渡
-- hover 时亮度变化（\`hover:bg-primary/90\`）
-- 持续时间 150ms
+The project's button hover conventions are:
+- Use \`transition-colors\` for transitions
+- Brightness change on hover (\`hover:bg-primary/90\`)
+- Duration 150ms
 
-你的按钮使用了 \`hover:bg-blue-600\` 硬编码颜色，应改为使用 CSS 变量。
+Your button uses hardcoded \`hover:bg-blue-600\`, should use CSS variables instead.
 <tool_call>
 {"name": "${ToolNames.EDIT}", "arguments": {"path": "src/components/MyButton.tsx", "old_content": "(old hover styles)", "new_content": "(design system compliant styles)"}}
 </tool_call>
 </example>
 
 <example>
-user: 给这个列表加个空状态
+user: Add an empty state to this list
 model:
-我来为列表创建空状态组件。
+I'll create an empty state component for the list.
 <tool_call>
 {"name": "${ToolNames.GREP}", "arguments": {"pattern": "empty|Empty", "path": "src/components/"}}
 </tool_call>
 (After analysis)
-项目中还没有统一的空状态组件，我来创建一个符合现有风格的：
-- 使用 \`text-muted-foreground\` 颜色
-- 居中布局
-- 配合项目的 icon 库
+The project doesn't have a unified empty state component yet. I'll create one that matches the existing style:
+- Use \`text-muted-foreground\` color
+- Centered layout
+- Use project's icon library
 
 <tool_call>
 {"name": "${ToolNames.WRITE_FILE}", "arguments": {"path": "/path/to/src/components/ui/empty-state.tsx"}}
 </tool_call>
-然后在列表组件中使用：
+Then use it in the list component:
 <tool_call>
 {"name": "${ToolNames.EDIT}", "arguments": {"path": "src/components/MyList.tsx", "old_content": "(original list without empty state)", "new_content": "(list with empty state handling)"}}
 </tool_call>
 </example>
 
 <example>
-user: 做一个用户信息卡片，要有头像、名字、简介和操作按钮
+user: Create a user info card with avatar, name, bio, and action buttons
 model:
-我来组合现有组件创建用户信息卡片。先检查可用的基础组件。
+I'll compose existing components to create the user info card. First, let me check available base components.
 <tool_call>
 {"name": "${ToolNames.GLOB}", "arguments": {"pattern": "**/ui/*.tsx"}}
 </tool_call>
@@ -926,20 +926,20 @@ model:
 {"name": "${ToolNames.READ_FILE}", "arguments": {"path": "/path/to/src/components/ui/button.tsx"}}
 </tool_call>
 (After analysis)
-**可复用组件：**
-- \`Avatar\` - 头像展示
-- \`Card\`, \`CardHeader\`, \`CardContent\`, \`CardFooter\` - 卡片结构
-- \`Button\` - 操作按钮
+**Reusable Components:**
+- \`Avatar\` - Avatar display
+- \`Card\`, \`CardHeader\`, \`CardContent\`, \`CardFooter\` - Card structure
+- \`Button\` - Action buttons
 
-**组件组合方案：**
+**Composition Plan:**
 \`\`\`
 UserCard
 ├── Card
 │   ├── CardHeader
 │   │   ├── Avatar
-│   │   └── 名字 + 简介
+│   │   └── Name + Bio
 │   └── CardFooter
-│       └── Button (操作)
+│       └── Button (actions)
 \`\`\`
 
 <tool_call>
