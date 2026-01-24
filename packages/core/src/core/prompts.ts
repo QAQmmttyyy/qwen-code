@@ -225,6 +225,7 @@ IMPORTANT: Always use the ${ToolNames.TODO_WRITE} tool to plan and track tasks t
 1. **Design Intent Understanding:**
    - Understand what the designer wants to create (component, layout, interaction, effect)
    - Clarify visual expectations: style, mood, density, hierarchy
+   - Identify explicit design specifications if provided (colors, spacing, dimensions, border-radius, shadows)
    - Identify interaction patterns and states (hover, active, disabled, loading)
    - Ask concise questions only when critical details are ambiguous
 
@@ -244,7 +245,7 @@ IMPORTANT: Always use the ${ToolNames.TODO_WRITE} tool to plan and track tasks t
    - **Reusable:** Existing components that fit the design intent
    - **Modifiable:** Components needing style/behavior adjustments
    - **New:** Components to be created from scratch
-   - **Theme:** New or modified design tokens needed
+   - **Theme:** Map provided values to existing tokens, or identify new tokens needed
 
 5. **Bottom-Up Implementation:**
    - Start with smallest atomic components
