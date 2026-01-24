@@ -537,6 +537,88 @@ I found the following 'app.config' files:
 - /path/to/moduleB/app.config
 To help you check their settings, I can read their contents. Which one would you like to start with, or should I read all of them?
 </example>
+
+<example>
+user: 我想要一个带进度指示的上传按钮
+model:
+我来创建这个组件。先检查现有的设计系统资源。
+[tool_call: ${ToolNames.GLOB} for pattern '**/ui/button*']
+[tool_call: ${ToolNames.READ_FILE} for path '/path/to/src/app/globals.css']
+[tool_call: ${ToolNames.READ_FILE} for path '/path/to/components.json']
+(After analysis)
+**组件审计：**
+- 可复用：\`Button\` 基础组件
+- 需新增：进度条叠加层、上传状态管理
+
+**实现计划：**
+1. 创建 \`UploadButton\` 组合 \`Button\` + 进度指示
+2. 使用项目的 \`--primary\` 色作为进度条颜色
+3. 支持 idle/uploading/success/error 四种状态
+
+[tool_call: ${ToolNames.WRITE_FILE} for path '/path/to/src/components/ui/upload-button.tsx']
+[tool_call: ${ToolNames.SHELL} for 'npx tsc --noEmit']
+</example>
+
+<example>
+user: 这个按钮的 hover 效果和现有风格不一致，帮我调整
+model:
+我来检查项目中按钮组件的现有样式约定。
+[tool_call: ${ToolNames.READ_FILE} for path '/path/to/src/components/ui/button.tsx']
+[tool_call: ${ToolNames.GREP} for pattern 'hover:' in path 'src/components/']
+(After analysis)
+项目的按钮 hover 约定是：
+- 使用 \`transition-colors\` 过渡
+- hover 时亮度变化（\`hover:bg-primary/90\`）
+- 持续时间 150ms
+
+你的按钮使用了 \`hover:bg-blue-600\` 硬编码颜色，应改为使用 CSS 变量。
+[tool_call: ${ToolNames.EDIT} for path 'src/components/MyButton.tsx' replacing old hover styles with design system compliant styles]
+</example>
+
+<example>
+user: 给这个列表加个空状态
+model:
+我来为列表创建空状态组件。
+[tool_call: ${ToolNames.GREP} for pattern 'empty|Empty' in path 'src/components/']
+(After analysis)
+项目中还没有统一的空状态组件，我来创建一个符合现有风格的：
+- 使用 \`text-muted-foreground\` 颜色
+- 居中布局
+- 配合项目的 icon 库
+
+[tool_call: ${ToolNames.WRITE_FILE} for path '/path/to/src/components/ui/empty-state.tsx']
+然后在列表组件中使用：
+[tool_call: ${ToolNames.EDIT} for path 'src/components/MyList.tsx' adding empty state when data is empty]
+</example>
+
+<example>
+user: 做一个用户信息卡片，要有头像、名字、简介和操作按钮
+model:
+我来组合现有组件创建用户信息卡片。先检查可用的基础组件。
+[tool_call: ${ToolNames.GLOB} for pattern '**/ui/*.tsx']
+[tool_call: ${ToolNames.READ_FILE} for path '/path/to/src/components/ui/avatar.tsx']
+[tool_call: ${ToolNames.READ_FILE} for path '/path/to/src/components/ui/card.tsx']
+[tool_call: ${ToolNames.READ_FILE} for path '/path/to/src/components/ui/button.tsx']
+(After analysis)
+**可复用组件：**
+- \`Avatar\` - 头像展示
+- \`Card\`, \`CardHeader\`, \`CardContent\`, \`CardFooter\` - 卡片结构
+- \`Button\` - 操作按钮
+
+**组件组合方案：**
+\`\`\`
+UserCard
+├── Card
+│   ├── CardHeader
+│   │   ├── Avatar
+│   │   └── 名字 + 简介
+│   └── CardFooter
+│       └── Button (操作)
+\`\`\`
+
+[tool_call: ${ToolNames.WRITE_FILE} for path '/path/to/src/components/user-card.tsx']
+</example>
+
 `.trim();
 
 const qwenCoderToolCallExamples = `
@@ -692,6 +774,202 @@ I found the following 'app.config' files:
 - /path/to/moduleB/app.config
 To help you check their settings, I can read their contents. Which one would you like to start with, or should I read all of them?
 </example>
+
+<example>
+user: 我想要一个带进度指示的上传按钮
+model:
+我来创建这个组件。先检查现有的设计系统资源。
+<tool_call>
+<function=${ToolNames.GLOB}>
+<parameter=pattern>
+**/ui/button*
+</parameter>
+</function>
+</tool_call>
+<tool_call>
+<function=${ToolNames.READ_FILE}>
+<parameter=path>
+/path/to/src/app/globals.css
+</parameter>
+</function>
+</tool_call>
+<tool_call>
+<function=${ToolNames.READ_FILE}>
+<parameter=path>
+/path/to/components.json
+</parameter>
+</function>
+</tool_call>
+(After analysis)
+**组件审计：**
+- 可复用：\`Button\` 基础组件
+- 需新增：进度条叠加层、上传状态管理
+
+**实现计划：**
+1. 创建 \`UploadButton\` 组合 \`Button\` + 进度指示
+2. 使用项目的 \`--primary\` 色作为进度条颜色
+3. 支持 idle/uploading/success/error 四种状态
+
+<tool_call>
+<function=${ToolNames.WRITE_FILE}>
+<parameter=path>
+/path/to/src/components/ui/upload-button.tsx
+</parameter>
+</function>
+</tool_call>
+<tool_call>
+<function=${ToolNames.SHELL}>
+<parameter=command>
+npx tsc --noEmit
+</parameter>
+</function>
+</tool_call>
+</example>
+
+<example>
+user: 这个按钮的 hover 效果和现有风格不一致，帮我调整
+model:
+我来检查项目中按钮组件的现有样式约定。
+<tool_call>
+<function=${ToolNames.READ_FILE}>
+<parameter=path>
+/path/to/src/components/ui/button.tsx
+</parameter>
+</function>
+</tool_call>
+<tool_call>
+<function=${ToolNames.GREP}>
+<parameter=pattern>
+hover:
+</parameter>
+<parameter=path>
+src/components/
+</parameter>
+</function>
+</tool_call>
+(After analysis)
+项目的按钮 hover 约定是：
+- 使用 \`transition-colors\` 过渡
+- hover 时亮度变化（\`hover:bg-primary/90\`）
+- 持续时间 150ms
+
+你的按钮使用了 \`hover:bg-blue-600\` 硬编码颜色，应改为使用 CSS 变量。
+<tool_call>
+<function=${ToolNames.EDIT}>
+<parameter=path>
+src/components/MyButton.tsx
+</parameter>
+<parameter=old_content>
+(old hover styles)
+</parameter>
+<parameter=new_content>
+(design system compliant styles)
+</parameter>
+</function>
+</tool_call>
+</example>
+
+<example>
+user: 给这个列表加个空状态
+model:
+我来为列表创建空状态组件。
+<tool_call>
+<function=${ToolNames.GREP}>
+<parameter=pattern>
+empty|Empty
+</parameter>
+<parameter=path>
+src/components/
+</parameter>
+</function>
+</tool_call>
+(After analysis)
+项目中还没有统一的空状态组件，我来创建一个符合现有风格的：
+- 使用 \`text-muted-foreground\` 颜色
+- 居中布局
+- 配合项目的 icon 库
+
+<tool_call>
+<function=${ToolNames.WRITE_FILE}>
+<parameter=path>
+/path/to/src/components/ui/empty-state.tsx
+</parameter>
+</function>
+</tool_call>
+然后在列表组件中使用：
+<tool_call>
+<function=${ToolNames.EDIT}>
+<parameter=path>
+src/components/MyList.tsx
+</parameter>
+<parameter=old_content>
+(original list without empty state)
+</parameter>
+<parameter=new_content>
+(list with empty state handling)
+</parameter>
+</function>
+</tool_call>
+</example>
+
+<example>
+user: 做一个用户信息卡片，要有头像、名字、简介和操作按钮
+model:
+我来组合现有组件创建用户信息卡片。先检查可用的基础组件。
+<tool_call>
+<function=${ToolNames.GLOB}>
+<parameter=pattern>
+**/ui/*.tsx
+</parameter>
+</function>
+</tool_call>
+<tool_call>
+<function=${ToolNames.READ_FILE}>
+<parameter=path>
+/path/to/src/components/ui/avatar.tsx
+</parameter>
+</function>
+</tool_call>
+<tool_call>
+<function=${ToolNames.READ_FILE}>
+<parameter=path>
+/path/to/src/components/ui/card.tsx
+</parameter>
+</function>
+</tool_call>
+<tool_call>
+<function=${ToolNames.READ_FILE}>
+<parameter=path>
+/path/to/src/components/ui/button.tsx
+</parameter>
+</function>
+</tool_call>
+(After analysis)
+**可复用组件：**
+- \`Avatar\` - 头像展示
+- \`Card\`, \`CardHeader\`, \`CardContent\`, \`CardFooter\` - 卡片结构
+- \`Button\` - 操作按钮
+
+**组件组合方案：**
+\`\`\`
+UserCard
+├── Card
+│   ├── CardHeader
+│   │   ├── Avatar
+│   │   └── 名字 + 简介
+│   └── CardFooter
+│       └── Button (操作)
+\`\`\`
+
+<tool_call>
+<function=${ToolNames.WRITE_FILE}>
+<parameter=path>
+/path/to/src/components/user-card.tsx
+</parameter>
+</function>
+</tool_call>
+</example>
+
 `.trim();
 const qwenVlToolCallExamples = `
 # Examples (Illustrating Tone and Workflow)
@@ -790,6 +1068,120 @@ I found the following 'app.config' files:
 - /path/to/moduleB/app.config
 To help you check their settings, I can read their contents. Which one would you like to start with, or should I read all of them?
 </example>
+
+<example>
+user: 我想要一个带进度指示的上传按钮
+model:
+我来创建这个组件。先检查现有的设计系统资源。
+<tool_call>
+{"name": "${ToolNames.GLOB}", "arguments": {"pattern": "**/ui/button*"}}
+</tool_call>
+<tool_call>
+{"name": "${ToolNames.READ_FILE}", "arguments": {"path": "/path/to/src/app/globals.css"}}
+</tool_call>
+<tool_call>
+{"name": "${ToolNames.READ_FILE}", "arguments": {"path": "/path/to/components.json"}}
+</tool_call>
+(After analysis)
+**组件审计：**
+- 可复用：\`Button\` 基础组件
+- 需新增：进度条叠加层、上传状态管理
+
+**实现计划：**
+1. 创建 \`UploadButton\` 组合 \`Button\` + 进度指示
+2. 使用项目的 \`--primary\` 色作为进度条颜色
+3. 支持 idle/uploading/success/error 四种状态
+
+<tool_call>
+{"name": "${ToolNames.WRITE_FILE}", "arguments": {"path": "/path/to/src/components/ui/upload-button.tsx"}}
+</tool_call>
+<tool_call>
+{"name": "${ToolNames.SHELL}", "arguments": {"command": "npx tsc --noEmit"}}
+</tool_call>
+</example>
+
+<example>
+user: 这个按钮的 hover 效果和现有风格不一致，帮我调整
+model:
+我来检查项目中按钮组件的现有样式约定。
+<tool_call>
+{"name": "${ToolNames.READ_FILE}", "arguments": {"path": "/path/to/src/components/ui/button.tsx"}}
+</tool_call>
+<tool_call>
+{"name": "${ToolNames.GREP}", "arguments": {"pattern": "hover:", "path": "src/components/"}}
+</tool_call>
+(After analysis)
+项目的按钮 hover 约定是：
+- 使用 \`transition-colors\` 过渡
+- hover 时亮度变化（\`hover:bg-primary/90\`）
+- 持续时间 150ms
+
+你的按钮使用了 \`hover:bg-blue-600\` 硬编码颜色，应改为使用 CSS 变量。
+<tool_call>
+{"name": "${ToolNames.EDIT}", "arguments": {"path": "src/components/MyButton.tsx", "old_content": "(old hover styles)", "new_content": "(design system compliant styles)"}}
+</tool_call>
+</example>
+
+<example>
+user: 给这个列表加个空状态
+model:
+我来为列表创建空状态组件。
+<tool_call>
+{"name": "${ToolNames.GREP}", "arguments": {"pattern": "empty|Empty", "path": "src/components/"}}
+</tool_call>
+(After analysis)
+项目中还没有统一的空状态组件，我来创建一个符合现有风格的：
+- 使用 \`text-muted-foreground\` 颜色
+- 居中布局
+- 配合项目的 icon 库
+
+<tool_call>
+{"name": "${ToolNames.WRITE_FILE}", "arguments": {"path": "/path/to/src/components/ui/empty-state.tsx"}}
+</tool_call>
+然后在列表组件中使用：
+<tool_call>
+{"name": "${ToolNames.EDIT}", "arguments": {"path": "src/components/MyList.tsx", "old_content": "(original list without empty state)", "new_content": "(list with empty state handling)"}}
+</tool_call>
+</example>
+
+<example>
+user: 做一个用户信息卡片，要有头像、名字、简介和操作按钮
+model:
+我来组合现有组件创建用户信息卡片。先检查可用的基础组件。
+<tool_call>
+{"name": "${ToolNames.GLOB}", "arguments": {"pattern": "**/ui/*.tsx"}}
+</tool_call>
+<tool_call>
+{"name": "${ToolNames.READ_FILE}", "arguments": {"path": "/path/to/src/components/ui/avatar.tsx"}}
+</tool_call>
+<tool_call>
+{"name": "${ToolNames.READ_FILE}", "arguments": {"path": "/path/to/src/components/ui/card.tsx"}}
+</tool_call>
+<tool_call>
+{"name": "${ToolNames.READ_FILE}", "arguments": {"path": "/path/to/src/components/ui/button.tsx"}}
+</tool_call>
+(After analysis)
+**可复用组件：**
+- \`Avatar\` - 头像展示
+- \`Card\`, \`CardHeader\`, \`CardContent\`, \`CardFooter\` - 卡片结构
+- \`Button\` - 操作按钮
+
+**组件组合方案：**
+\`\`\`
+UserCard
+├── Card
+│   ├── CardHeader
+│   │   ├── Avatar
+│   │   └── 名字 + 简介
+│   └── CardFooter
+│       └── Button (操作)
+\`\`\`
+
+<tool_call>
+{"name": "${ToolNames.WRITE_FILE}", "arguments": {"path": "/path/to/src/components/user-card.tsx"}}
+</tool_call>
+</example>
+
 `.trim();
 
 function getToolCallExamples(model?: string): string {
